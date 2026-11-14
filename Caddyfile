@@ -1,0 +1,9 @@
+# DOMAIN .env faylida beriladi. Domen bo'lsa — HTTPS avtomatik ishlaydi.
+# Domen bo'lmasa DOMAIN=:80 qo'ying (unda sayt http://SERVER_IP orqali ochiladi).
+{$DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 8MB
+	}
+	reverse_proxy app:3000
+}

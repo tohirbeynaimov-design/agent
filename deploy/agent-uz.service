@@ -1,0 +1,24 @@
+# Docker'siz o'rnatish uchun systemd xizmati.
+# /etc/systemd/system/agent-uz.service ga nusxalang, so'ng:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now agent-uz
+#   sudo journalctl -u agent-uz -f        # loglarni ko'rish
+[Unit]
+Description=Agent UZ buyurtma tizimi
+After=network.target
+
+[Service]
+Type=simple
+User=agentuz
+WorkingDirectory=/opt/agent-uz
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning src/server.js
+Restart=always
+RestartSec=3
+# Xavfsizlik cheklovlari
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/agent-uz/data
+
+[Install]
+WantedBy=multi-user.target
