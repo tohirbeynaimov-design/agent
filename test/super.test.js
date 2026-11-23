@@ -70,13 +70,16 @@ test('super admin faqat adminlarni boshqaradi: buyurtma, mahsulot, hisobotga kir
 });
 
 test('super admin admin hisobini ochadi, admin u bilan kiradi', async () => {
-  const weak = await sup('POST', '/api/super/admins', { name: 'Jasur Aliyev', phone: '90 123 45 67', password: '1234567' });
+  const weak = await sup('POST', '/api/super/admins', { name: 'Jasur Aliyev', phone: '90 123 45 67', password: '1234567', customerLimit: 1 });
   assert.equal(weak.status, 400, 'admin paroli kamida 8 belgi');
-  const r = await sup('POST', '/api/super/admins', { name: 'Jasur Aliyev', phone: '90 123 45 67', password: 'Jasur-2026' });
+  const noLimit = await sup('POST', '/api/super/admins', { name: 'Jasur Aliyev', phone: '90 123 45 67', password: 'Jasur-2026' });
+  assert.equal(noLimit.status, 400, "nechta mijoz qo'sha olishi majburiy");
+  const r = await sup('POST', '/api/super/admins', { name: 'Jasur Aliyev', phone: '90 123 45 67', password: 'Jasur-2026', customerLimit: 1 });
   assert.equal(r.status, 201);
   adminId = r.data.admin.id;
   assert.equal(r.data.admin.phone, '998901234567');
-  const dup = await sup('POST', '/api/super/admins', { name: 'Boshqa', phone: '998901234567', password: 'Boshqa-2026' });
+  assert.equal(r.data.admin.customerLimit, 1);
+  const dup = await sup('POST', '/api/super/admins', { name: 'Boshqa', phone: '998901234567', password: 'Boshqa-2026', customerLimit: 5 });
   assert.equal(dup.status, 409);
 
   const login = await adm('POST', '/api/auth/login', { phone: '998901234567', password: 'Jasur-2026' });
@@ -91,8 +94,19 @@ test('super admin admin hisobini ochadi, admin u bilan kiradi', async () => {
 });
 
 test("mijoz raqamini admin uchun ishlatib bo'lmaydi; mijoz super panelga kira olmaydi", async () => {
-  await cust('POST', '/api/auth/register', { name: 'Mijoz', phone: '998935556677', address: 'Yunusobod', password: '123456' });
-  assert.equal((await sup('POST', '/api/super/admins', { name: 'Xodim', phone: '998935556677', password: 'Kuchli-2026' })).status, 409);
+  // Admin super admin belgilagan songacha mijoz qo'sha oladi
+  const c1 = await adm('POST', '/api/admin/customers', { name: 'Mijoz', phone: '998935556677', address: 'Yunusobod', password: '123456' });
+  assert.equal(c1.status, 201);
+  const c2 = await adm('POST', '/api/admin/customers', { name: 'Ikkinchi', phone: '998935556678', address: 'Yunusobod', password: '123456' });
+  assert.equal(c2.status, 403, 'limit 1 ta');
+  assert.match(c2.data.error, /ko'pi bilan 1 ta/);
+  assert.equal((await adm('GET', '/api/admin/customers')).data.limit.used, 1);
+  assert.equal((await sup('GET', '/api/super/admins')).data.admins[0].customersAdded, 1);
+  assert.equal((await sup('PUT', `/api/super/admins/${adminId}`, { name: 'Jasur Aliyev', phone: '998901234567', customerLimit: 2 })).status, 200);
+  assert.equal((await adm('POST', '/api/admin/customers', { name: 'Ikkinchi', phone: '998935556678', address: 'Yunusobod', password: '123456' })).status, 201);
+  assert.equal((await cust('POST', '/api/auth/login', { phone: '998935556677', password: '123456' })).status, 200);
+
+  assert.equal((await sup('POST', '/api/super/admins', { name: 'Xodim', phone: '998935556677', password: 'Kuchli-2026', customerLimit: 5 })).status, 409);
   assert.equal((await cust('GET', '/api/super/admins')).status, 403);
   assert.equal((await cust('DELETE', `/api/super/admins/${adminId}`, {})).status, 403);
 });
@@ -101,6 +115,7 @@ test('tahrirlash va parolni tiklash', async () => {
   const e = await sup('PUT', `/api/super/admins/${adminId}`, { name: 'Jasur A.', phone: '998901234567' });
   assert.equal(e.status, 200);
   assert.equal(e.data.admin.name, 'Jasur A.');
+  assert.equal(e.data.admin.customerLimit, 2, "limit berilmasa o'zgarmaydi");
   const p = await sup('PUT', `/api/super/admins/${adminId}/password`, { password: 'Yangi-Parol-1' });
   assert.equal(p.status, 200);
   assert.equal((await adm('GET', '/api/orders')).status, 401, 'eski kirish bekor bo\'ldi');

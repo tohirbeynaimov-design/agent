@@ -69,12 +69,12 @@ const S = {
   cfg: { appName: 'Agent UZ' }, me: null, units: [], products: [],
   myOrders: [], myOrdersTotal: 0,
   adm: { orders: [], counts: {}, total: 0, today: { count: 0, sum: 0 } },
-  customers: [], report: null, convs: [], thread: { cid: null, messages: [] },
+  customers: [], report: null, stockRep: null, convs: [], thread: { cid: null, messages: [] },
   summary: { newOrders: 0, unread: 0 }, loaded: {}, orderCache: new Map(), admins: [],
 };
 const ui = {
-  authMode: 'login', custTab: 'katalog', cat: 'Hammasi', q: '', adminTab: 'buyurtmalar', orderFilter: 'faol', orderLimit: 40,
-  myLimit: 30, rType: 'kunlik', rDate: ymd(new Date()), rBasis: 'yetkazildi', openOrderId: null, chatWith: null, drafts: {},
+  custTab: 'katalog', cat: 'Hammasi', q: '', adminTab: 'buyurtmalar', orderFilter: 'faol', orderLimit: 40,
+  myLimit: 30, rType: 'kunlik', rDate: ymd(new Date()), rBasis: 'yetkazildi', rView: 'savdo', openOrderId: null, chatWith: null, drafts: {},
   formPhoto: '', formPhotoOrig: '',
 };
 const isAdmin = () => S.me?.role === 'admin';
@@ -99,8 +99,12 @@ async function loadAdminOrders() {
   S.adm = await api(`/orders?status=${ui.orderFilter}&limit=${ui.orderLimit}&since=${t0.getTime()}`);
   S.adm.orders.forEach(o => S.orderCache.set(o.id, o));
 }
-async function loadCustomers() { S.customers = (await api('/admin/customers')).customers; }
-async function loadReport() { const p = period(); const r = await api(`/admin/reports?from=${p.from}&to=${p.to}&basis=${ui.rBasis}`); r.label = p.label; S.report = r; }
+async function loadCustomers() { const d = await api('/admin/customers'); S.customers = d.customers; S.custLimit = d.limit; }
+async function loadReport() {
+  const p = period();
+  if (ui.rView === 'ombor') { const r = await api(`/admin/stock-report?from=${p.from}&to=${p.to}`); r.label = p.label; S.stockRep = r; return; }
+  const r = await api(`/admin/reports?from=${p.from}&to=${p.to}&basis=${ui.rBasis}`); r.label = p.label; S.report = r;
+}
 async function loadConvs() { S.convs = (await api('/chat/conversations')).conversations; }
 async function loadSummary() { S.summary = await api('/summary'); }
 async function loadAdmins() { S.admins = (await api('/super/admins')).admins; }
@@ -183,7 +187,7 @@ function startEvents() {
     soon();
   });
   es.addEventListener('read', soon);
-  es.addEventListener('products', () => { if (!isAdmin() || ui.adminTab === 'mahsulotlar' || ui.adminTab === 'ombor') soon(); });
+  es.addEventListener('products', () => { if (!isAdmin() || ui.adminTab === 'mahsulotlar' || ui.adminTab === 'ombor' || (ui.adminTab === 'hisobotlar' && ui.rView === 'ombor')) soon(); });
   es.onerror = () => { esBroken = true; };
   es.onopen = () => { if (esBroken) { esBroken = false; soon(); } };
 }
@@ -193,12 +197,12 @@ function stopEvents() { if (es) { es.close(); es = null; } }
 function afterLogin(user) {
   S.me = user;
   S.loaded = {}; S.orderCache.clear();
-  ui.custTab = 'katalog'; ui.adminTab = 'buyurtmalar'; ui.authMode = 'login'; ui.chatWith = null; ui.drafts = {};
+  ui.custTab = 'katalog'; ui.adminTab = 'buyurtmalar'; ui.chatWith = null; ui.drafts = {};
   loadCart(); if (!isSuper()) startEvents(); closeModal(); render(); scrollTo(0, 0); refresh();
 }
 function onLoggedOut(msg) {
   S.me = null; stopEvents(); cart = {};
-  Object.assign(S, { products: [], myOrders: [], customers: [], report: null, convs: [], thread: { cid: null, messages: [] }, summary: { newOrders: 0, unread: 0 }, loaded: {}, admins: [] });
+  Object.assign(S, { products: [], myOrders: [], customers: [], report: null, stockRep: null, convs: [], thread: { cid: null, messages: [] }, summary: { newOrders: 0, unread: 0 }, loaded: {}, admins: [] });
   closeModal(); render(); if (msg) toast(msg);
 }
 
@@ -269,36 +273,18 @@ function viewSuperLogin() {
 }
 function viewAuth() {
   if (SUPER_PAGE) return viewSuperLogin();
-  const m = ui.authMode;
-  const form = m === 'login' ? `
-    <form data-form="login">
-      ${phoneField()}
-      <label>Parol<input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="btn primary block lg">Kirish</button>
-    </form>` : `
-    <form data-form="register">
-      <label>Ism familiya *<input name="name" required maxlength="80" autocomplete="name" placeholder="Masalan: Azizbek Karimov"></label>
-      <label>Do'kon / firma nomi<input name="shop" maxlength="100" placeholder="Masalan: Baraka do'koni"></label>
-      ${phoneField()}
-      <label>Yetkazib berish manzili *<input name="address" required maxlength="300" autocomplete="street-address" placeholder="Tuman, ko'cha, uy"></label>
-      <div class="two">
-        <label>Parol o'ylab toping *<input name="password" type="password" autocomplete="new-password" required placeholder="kamida 6 belgi"></label>
-        <label>Parolni takrorlang *<input name="password2" type="password" autocomplete="new-password" required></label>
-      </div>
-      <button class="btn primary block lg">Ro'yxatdan o'tish</button>
-    </form>`;
   return `<div class="auth-wrap">
     <div class="card auth">
       <img class="auth-logo" src="/logo.png" alt="${esc(S.cfg.appName)}" width="469" height="206">
       <p class="sub muted">Mijozlar va adminlar uchun kirish</p>
-      <div class="seg">
-        <button data-a="authMode" data-id="login" class="${m === 'login' ? 'on' : ''}">Kirish</button>
-        <button data-a="authMode" data-id="register" class="${m === 'register' ? 'on' : ''}">Ro'yxatdan o'tish</button>
-      </div>
-      ${form}
+      <form data-form="login">
+        ${phoneField()}
+        <label>Parol<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary block lg">Kirish</button>
+      </form>
       <div id="authErr" class="err" role="alert"></div>
     </div>
-    <p class="muted small center">Parolni unutdingizmi? Ta'minotchiga qo'ng'iroq qiling — yangi parol qo'yib beradi.</p>
+    <p class="muted small center">Hisobingiz yo'qmi? Ta'minotchingiz sizni ro'yxatga qo'shib, telefon raqam va parol beradi.<br>Parolni unutsangiz ham ta'minotchiga qo'ng'iroq qiling — yangi parol qo'yib beradi.</p>
     <div class="or-sep"><span>yoki</span></div>
     <a class="btn block alt-login" href="/super">🛡️ Super admin sifatida kirish</a>
   </div>`;
@@ -573,10 +559,69 @@ function period() {
   return { from: from.getTime(), to: to.getTime(), label };
 }
 const TYPE_LABEL = { kunlik: 'Kunlik', haftalik: 'Haftalik', oylik: 'Oylik' };
+// Hisobotlar sarlavhasi va davr tanlash (savdo va ombor hisobi uchun umumiy)
+function reportHead() {
+  const types = [['kunlik', 'Kunlik'], ['haftalik', 'Haftalik'], ['oylik', 'Oylik']];
+  const stock = ui.rView === 'ombor';
+  return `<div class="sec-head"><h2>${stock ? 'Ombor hisobi' : 'Hisobotlar'}</h2>
+      <div class="row gap no-print">${stock
+        ? '<button class="btn" data-a="rView" data-id="savdo">📊 Savdo hisoboti</button>'
+        : '<button class="btn" data-a="rView" data-id="ombor">🏬 Ombor hisobi</button>'}
+        <button class="btn" data-a="exportCsv">⬇ Excel (CSV)</button><button class="btn" data-a="print">🖨 Chop etish</button></div></div>
+    <div class="card rep-ctl no-print">
+      <div class="seg">${types.map(([k, l]) => `<button data-a="rType" data-id="${k}" class="${ui.rType === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="row gap"><button class="btn sm" data-a="rShift" data-id="-1" aria-label="Oldingi">‹</button>
+        <input type="date" id="rDate" value="${ui.rDate}" aria-label="Sana"><button class="btn sm" data-a="rShift" data-id="1" aria-label="Keyingi">›</button>
+        <button class="btn sm" data-a="rToday">Bugun</button></div>
+      ${stock ? '' : `<select id="rBasis" aria-label="Qaysi buyurtmalar hisoblansin"><option value="yetkazildi" ${ui.rBasis === 'yetkazildi' ? 'selected' : ''}>Faqat yetkazilganlar</option>
+        <option value="barcha" ${ui.rBasis === 'barcha' ? 'selected' : ''}>Barcha buyurtmalar (bekorlardan tashqari)</option></select>`}
+    </div>`;
+}
+const MOVE_LABEL = {
+  boshlangich: "Boshlang'ich qoldiq", kirim: 'Kirim', chiqim: 'Chiqim', tuzatish: 'Sanoq (tuzatish)', buyurtma: 'Buyurtma', qaytdi: 'Bekor qilindi, qaytdi',
+};
+const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '') + num(Math.abs(n));
+const sgnCls = n => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
+function viewStockReport() {
+  const r = S.stockRep;
+  if (!r) return loadingHtml();
+  const ins = r.moves.filter(m => m.qty > 0).length, outs = r.moves.filter(m => m.qty < 0).length;
+  const ordersOut = new Set(r.moves.filter(m => m.kind === 'buyurtma').map(m => m.orderId)).size;
+  const note = r.untracked ? `<p class="note">ℹ️ ${r.untracked} ta mahsulotning ombordagi miqdori hali kiritilmagan, ular hisobga kirmaydi. "Ombor" bo'limida "Tuzatish" orqali kiriting.</p>` : '';
+  return `${reportHead()}
+    <h3 class="period">${TYPE_LABEL[ui.rType]} ombor hisobi: ${r.label}</h3>
+    <div class="kpis">
+      <div class="kpi"><span>Mahsulot turlari</span><b>${r.products.length}</b></div>
+      <div class="kpi"><span>Kirim yozuvlari</span><b>${ins}</b></div>
+      <div class="kpi"><span>Chiqim yozuvlari</span><b>${outs}</b></div>
+      <div class="kpi total"><span>Buyurtma bilan chiqdi</span><b>${ordersOut} ta</b></div>
+    </div>
+    ${note}
+    ${r.products.length ? `<div class="stack">
+      <div class="card flush tbl-wrap"><h3>Mahsulotlar bo'yicha</h3><table class="tbl">
+        <thead><tr><th>Mahsulot</th><th class="r hide-m">Davr boshida</th><th class="r">Kirdi</th><th class="r">Chiqdi</th><th class="r">Qoldi</th></tr></thead>
+        <tbody>${r.products.map(p => `<tr class="${p.deleted ? 'dim' : ''}"><td><b>${esc(p.name)}</b>${p.deleted ? ` <span class="muted small">(o'chirilgan)</span>` : ''}
+            <div class="muted small m-only">Boshida: ${num(p.start)} ${esc(p.unit)}</div></td>
+          <td class="r nowrap hide-m">${num(p.start)} ${esc(p.unit)}</td>
+          <td class="r nowrap">${p.in ? `<span class="pos">+${num(p.in)}</span>` : '—'}</td>
+          <td class="r nowrap">${p.out ? `<span class="neg">−${num(p.out)}</span>` : '—'}</td>
+          <td class="r nowrap"><b>${num(p.end)} ${esc(p.unit)}</b></td></tr>`).join('')}</tbody></table></div>
+      <div class="card flush tbl-wrap"><h3>Harakatlar tarixi <span class="muted" style="font-weight:400">(${r.moves.length})</span></h3>${r.moves.length ? `<table class="tbl">
+        <thead><tr><th>${ui.rType === 'kunlik' ? 'Vaqt' : 'Sana'}</th><th>Mahsulot</th><th class="hide-m">Harakat</th><th class="r">Miqdor</th><th class="r hide-m">Qoldi</th><th class="hide-m">Kim</th></tr></thead>
+        <tbody>${r.moves.map(m => {
+          const what = `${MOVE_LABEL[m.kind] || esc(m.kind)}${m.orderId ? ` <a href="#" data-a="openOrder" data-id="${m.orderId}">#${m.orderId}</a>` : ''}`;
+          return `<tr><td class="nowrap">${ui.rType === 'kunlik' ? fmtTime(m.at) : fmtDT(m.at)}</td>
+            <td>${esc(m.name)}<div class="muted small m-only">${what}${m.by ? ' · ' + esc(m.by) : ''}</div></td>
+            <td class="hide-m">${what}</td>
+            <td class="r nowrap"><span class="${sgnCls(m.qty)}">${signed(m.qty)}</span> ${esc(m.unit)}</td>
+            <td class="r nowrap hide-m">${num(m.after)} ${esc(m.unit)}</td><td class="hide-m">${esc(m.by)}</td></tr>`;
+        }).join('')}</tbody></table>` : `<p class="muted" style="padding:0 16px 16px">Bu davrda omborga hech narsa kirmadi va chiqmadi.</p>`}</div>
+    </div>` : `<div class="card">${empty('🏬', "Ombor hisobi uchun mahsulot yo'q. Avval mahsulot qo'shib, ombordagi miqdorini kiriting.")}</div>`}`;
+}
 function viewReports() {
+  if (ui.rView === 'ombor') return viewStockReport();
   const r = S.report;
   if (!r) return loadingHtml();
-  const types = [['kunlik', 'Kunlik'], ['haftalik', 'Haftalik'], ['oylik', 'Oylik']];
   const base = new Date(r.from);
   const series = ui.rType === 'kunlik' ? [] : r.series.map((sum, i) => {
     const dd = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
@@ -591,16 +636,7 @@ function viewReports() {
       <tbody>${r.orders.map(o => `<tr><td><a href="#" data-a="openOrder" data-id="${o.id}">#${o.id}</a></td><td class="hide-m">${fmtTime(o.createdAt)}</td><td>${esc(o.customer.shop || o.customer.name)}<div class="muted small m-only">${fmtTime(o.createdAt)}</div></td><td class="hide-m">${badge(o.status)}</td><td class="r nowrap">${money(o.total)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td>ITOGO</td><td class="hide-m"></td><td></td><td class="hide-m"></td><td class="r nowrap">${money(r.total)}</td></tr></tfoot></table></div>` : '';
   const note = r.notCounted ? `<p class="note">ℹ️ ${ui.rBasis === 'yetkazildi' ? 'Hali yetkazilmagan yoki bekor qilingan' : 'Bekor qilingan'} ${r.notCounted} ta buyurtma hisobotga kirmadi.</p>` : '';
-  return `<div class="sec-head"><h2>Hisobotlar</h2>
-      <div class="row gap no-print"><button class="btn" data-a="exportCsv">⬇ Excel (CSV)</button><button class="btn" data-a="print">🖨 Chop etish</button></div></div>
-    <div class="card rep-ctl no-print">
-      <div class="seg">${types.map(([k, l]) => `<button data-a="rType" data-id="${k}" class="${ui.rType === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <div class="row gap"><button class="btn sm" data-a="rShift" data-id="-1" aria-label="Oldingi">‹</button>
-        <input type="date" id="rDate" value="${ui.rDate}" aria-label="Sana"><button class="btn sm" data-a="rShift" data-id="1" aria-label="Keyingi">›</button>
-        <button class="btn sm" data-a="rToday">Bugun</button></div>
-      <select id="rBasis" aria-label="Qaysi buyurtmalar hisoblansin"><option value="yetkazildi" ${ui.rBasis === 'yetkazildi' ? 'selected' : ''}>Faqat yetkazilganlar</option>
-        <option value="barcha" ${ui.rBasis === 'barcha' ? 'selected' : ''}>Barcha buyurtmalar (bekorlardan tashqari)</option></select>
-    </div>
+  return `${reportHead()}
     <h3 class="period">${TYPE_LABEL[ui.rType]} hisobot: ${r.label}</h3>
     <div class="kpis">
       <div class="kpi"><span>Buyurtmalar</span><b>${r.count}</b></div>
@@ -625,16 +661,35 @@ function viewReports() {
 
 /* Mijozlar */
 function viewAdminCustomers() {
-  if (!S.customers.length) return `<div class="sec-head"><h2>Mijozlar</h2></div><div class="card">${empty('👥', "Hali ro'yxatdan o'tgan mijoz yo'q. Mijozlar ilova manzilini ochib, o'zlari ro'yxatdan o'tadi.")}</div>`;
-  return `<div class="sec-head"><h2>Mijozlar <span class="muted" style="font-weight:400">(${S.customers.length})</span></h2></div>
+  const L = S.custLimit || { used: 0, max: null };
+  const full = L.max !== null && L.used >= L.max;
+  const limitTxt = L.max === null ? `Siz qo'shgan mijozlar: ${L.used} ta` : `Siz qo'shgan mijozlar: <b>${L.used} / ${L.max}</b>${full ? ' — limit to\'ldi' : ''}`;
+  const head = `<div class="sec-head"><h2>Mijozlar <span class="muted" style="font-weight:400">(${S.customers.length})</span></h2>
+      <button class="btn primary" data-a="newCustomer" ${full ? `disabled title="Limit to'ldi. Super admin bilan bog'laning."` : ''}>+ Mijoz qo'shish</button></div>
+    <p class="note">${limitTxt}. Mijoz siz kiritgan telefon raqam va parol bilan kirish sahifasidan kiradi.${full ? " Ko'proq mijoz qo'shish uchun super admin bilan bog'laning." : ''}</p>`;
+  if (!S.customers.length) return `${head}<div class="card">${empty('👥', "Hali mijoz yo'q. \"+ Mijoz qo'shish\" tugmasini bosing.")}</div>`;
+  return `${head}
     <div class="card flush tbl-wrap"><table class="tbl">
-      <thead><tr><th>Mijoz</th><th class="hide-m">Telefon</th><th class="hide-m">Manzil</th><th class="r hide-m">Buyurtma</th><th class="r">Jami summa</th><th class="hide-m">Oxirgi buyurtma</th><th class="hide-m">Ro'yxatdan o'tgan</th><th></th></tr></thead>
+      <thead><tr><th>Mijoz</th><th class="hide-m">Telefon</th><th class="hide-m">Manzil</th><th class="r hide-m">Buyurtma</th><th class="r">Jami summa</th><th class="hide-m">Oxirgi buyurtma</th><th class="hide-m">Qo'shilgan</th><th></th></tr></thead>
       <tbody>${S.customers.map(c => `<tr><td><b>${esc(c.shop || c.name)}</b><div class="muted small">${esc(c.name)}</div>
           <div class="small m-only"><a href="tel:+${esc(c.phone)}">${fmtPhone(c.phone)}</a> · ${c.orders} ta buyurtma</div></td>
         <td class="nowrap hide-m"><a href="tel:+${esc(c.phone)}">${fmtPhone(c.phone)}</a></td><td class="hide-m">${esc(c.address)}</td>
-        <td class="r hide-m">${c.orders}</td><td class="r nowrap">${money(c.sum)}</td><td class="nowrap hide-m">${c.lastOrderAt ? fmtDate(c.lastOrderAt) : '—'}</td><td class="nowrap hide-m">${fmtDate(c.createdAt)}</td>
-        <td class="r"><div class="acts"><button class="btn sm" data-a="chatWith" data-id="${c.id}">Yozish</button><button class="btn sm" data-a="resetPw" data-id="${c.id}">Parol</button></div></td></tr>`).join('')}</tbody>
+        <td class="r hide-m">${c.orders}</td><td class="r nowrap">${money(c.sum)}</td><td class="nowrap hide-m">${c.lastOrderAt ? fmtDate(c.lastOrderAt) : '—'}</td>
+        <td class="nowrap hide-m">${fmtDate(c.createdAt)}<div class="muted small">${c.mine ? 'siz' : c.addedBy ? esc(c.addedBy) : "o'zi ro'yxatdan o'tgan"}</div></td>
+        <td class="r"><div class="acts"><button class="btn sm" data-a="chatWith" data-id="${c.id}">Yozish</button><button class="btn sm" data-a="editCustomer" data-id="${c.id}">Tahrirlash</button><button class="btn sm" data-a="resetPw" data-id="${c.id}">Parol</button></div></td></tr>`).join('')}</tbody>
     </table></div>`;
+}
+function customerForm(c) {
+  openModal(`<form data-form="saveCustomer" data-id="${c ? c.id : ''}">
+    <div class="m-head"><h3>${c ? 'Mijozni tahrirlash' : 'Yangi mijoz'}</h3><button type="button" class="x" data-a="closeModal" aria-label="Yopish">✕</button></div>
+    <label>Ism familiya *<input name="name" required maxlength="80" value="${esc(c?.name)}" placeholder="Masalan: Azizbek Karimov"></label>
+    <label>Do'kon / firma nomi<input name="shop" maxlength="100" value="${esc(c?.shop)}" placeholder="Masalan: Baraka do'koni"></label>
+    <label>Telefon raqam (kirish uchun) *<div class="phone"><span>+998</span><input name="phone" inputmode="numeric" placeholder="90 123 45 67" data-phone required value="${c ? fmtLocal(String(c.phone).slice(3)) : ''}"></div></label>
+    <label>Yetkazib berish manzili *<input name="address" required maxlength="300" value="${esc(c?.address)}" placeholder="Tuman, ko'cha, uy"></label>
+    ${c ? '' : `${pwField('Parol *', 6)}<p class="muted small" style="margin-top:-6px">Parol avtomatik yaratildi, xohlasangiz o'zgartiring. Telefon raqam va parolni mijozga ayting.</p>`}
+    <div class="m-actions"><button type="button" class="btn" data-a="closeModal">Bekor</button><button class="btn primary">${c ? 'Saqlash' : "Mijozni qo'shish"}</button></div>
+  </form>`);
+  setTimeout(() => $('#modalBox input[name=name]')?.focus(), 30);
 }
 function resetPwForm(c) {
   openModal(`<form data-form="resetPw" data-id="${c.id}">
@@ -652,12 +707,13 @@ function viewSuper() {
   const body = !S.loaded[tabKey()] ? loadingHtml() : `
     <div class="sec-head"><h2>Admin hisoblari <span class="muted" style="font-weight:400">(${list.length})</span></h2>
       <button class="btn primary" data-a="newAdmin">+ Admin qo'shish</button></div>
-    <p class="note">Adminlar asosiy sahifada telefon raqami va parol bilan kiradi. Bloklangan admin tizimga kira olmaydi, uning ochiq turgan oynalari ham darhol yopiladi.</p>
+    <p class="note">Adminlar asosiy sahifada telefon raqami va parol bilan kiradi. Mijozlarni admin qo'shadi: "Mijozlar" ustunida admin nechta qo'shgani va unga belgilangan limit ko'rinadi (∞ — limit qo'yilmagan, "Tahrirlash" orqali belgilang). Bloklangan admin tizimga kira olmaydi, uning ochiq turgan oynalari ham darhol yopiladi.</p>
     ${list.length ? `<div class="card flush tbl-wrap"><table class="tbl">
-      <thead><tr><th>Admin</th><th class="hide-m">Telefon (login)</th><th>Holat</th><th class="hide-m">Yaratilgan</th><th class="hide-m">Oxirgi kirish</th><th></th></tr></thead>
+      <thead><tr><th>Admin</th><th class="hide-m">Telefon (login)</th><th class="r">Mijozlar</th><th>Holat</th><th class="hide-m">Yaratilgan</th><th class="hide-m">Oxirgi kirish</th><th></th></tr></thead>
       <tbody>${list.map(a => `<tr class="${a.active ? '' : 'dim'}">
         <td><b>${esc(a.name)}</b><div class="small m-only">${fmtPhone(a.phone)}</div><div class="muted small m-only">Oxirgi kirish: ${a.lastLoginAt ? fmtDT(a.lastLoginAt) : '—'}</div></td>
         <td class="nowrap hide-m">${fmtPhone(a.phone)}</td>
+        <td class="r nowrap" title="Qo'shgan / ruxsat etilgan">${a.customersAdded} / ${a.customerLimit ?? '∞'}</td>
         <td>${a.active ? '<span class="pill ok">Faol</span>' : '<span class="pill off">Bloklangan</span>'}</td>
         <td class="nowrap hide-m">${fmtDate(a.createdAt)}</td>
         <td class="nowrap hide-m">${a.lastLoginAt ? fmtDT(a.lastLoginAt) : '—'}</td>
@@ -680,6 +736,8 @@ function adminForm(a) {
     <div class="m-head"><h3>${a ? 'Adminni tahrirlash' : 'Yangi admin'}</h3><button type="button" class="x" data-a="closeModal" aria-label="Yopish">✕</button></div>
     <label>Ism familiya *<input name="name" required maxlength="80" value="${esc(a?.name)}" placeholder="Masalan: Jasur Aliyev"></label>
     <label>Telefon raqam (kirish uchun) *<div class="phone"><span>+998</span><input name="phone" inputmode="numeric" placeholder="90 123 45 67" data-phone required value="${a ? fmtLocal(String(a.phone).slice(3)) : ''}"></div></label>
+    <label>Nechta mijoz qo'sha oladi? *<input name="customerLimit" type="number" min="0" max="100000" step="1" required inputmode="numeric" value="${a?.customerLimit ?? ''}" placeholder="Masalan: 50">
+      <span class="muted small" style="font-weight:400">${a ? `Hozir qo'shgan: ${a.customersAdded} ta. ` : ''}Admin shu songacha mijoz qo'sha oladi.</span></label>
     ${a ? '' : `${pwField('Parol *', 8)}<p class="muted small" style="margin-top:-6px">Parol avtomatik yaratildi, xohlasangiz o'zgartiring. Uni adminga ayting: admin keyin "Profil"da o'zgartira oladi.</p>`}
     <div class="m-actions"><button type="button" class="btn" data-a="closeModal">Bekor</button><button class="btn primary">${a ? 'Saqlash' : 'Admin yaratish'}</button></div>
   </form>`);
@@ -826,7 +884,6 @@ function beep() {
 const go = (k, v) => { ui[k] = v; scrollTo(0, 0); render(); refresh(); };
 const A = {
   reload: () => location.reload(),
-  authMode: id => { ui.authMode = id; render(); },
   logout: async () => { try { await api('/auth/logout', { method: 'POST' }); } catch { /* */ } onLoggedOut(); },
   profile: () => profileForm(),
   custTab: id => go('custTab', id),
@@ -882,6 +939,7 @@ const A = {
   pickPhoto: () => $('#photoInput')?.click(),
   rmPhoto: () => { ui.formPhoto = ''; updatePhotoUI(); },
   rType: id => { ui.rType = id; refresh(); },
+  rView: id => { ui.rView = id; render(); refresh(); },
   rShift: id => {
     const k = Number(id), [y, m, d] = ui.rDate.split('-').map(Number);
     const nd = ui.rType === 'kunlik' ? new Date(y, m - 1, d + k) : ui.rType === 'haftalik' ? new Date(y, m - 1, d + 7 * k) : new Date(y, m - 1 + k, 1);
@@ -890,9 +948,12 @@ const A = {
   rToday: () => { ui.rDate = ymd(new Date()); refresh(); },
   exportCsv: () => {
     const p = period();
+    if (ui.rView === 'ombor') { location.href = `/api/admin/stock-report.csv?from=${p.from}&to=${p.to}&label=${encodeURIComponent(`${TYPE_LABEL[ui.rType]} ombor hisobi: ${p.label}`)}`; return; }
     location.href = `/api/admin/reports.csv?from=${p.from}&to=${p.to}&basis=${ui.rBasis}&label=${encodeURIComponent(`${TYPE_LABEL[ui.rType]} hisobot: ${p.label}`)}`;
   },
   chatWith: id => { ui.chatWith = Number(id); go('adminTab', 'chat'); },
+  newCustomer: () => customerForm(null),
+  editCustomer: id => { const c = S.customers.find(x => x.id === Number(id)); if (c) customerForm(c); },
   chatBack: () => { ui.chatWith = null; render(); },
   goChat: id => {
     $('#toast').classList.remove('show');
@@ -924,16 +985,6 @@ const F = {
   login: async f => {
     const d = await api('/auth/login', { method: 'POST', body: { phone: '998' + localDigits(val(f, 'phone')), password: f.elements.password.value } });
     afterLogin(d.user);
-  },
-  register: async f => {
-    const pw = f.elements.password.value;
-    if (pw.length < 6) return authErr("Parol kamida 6 belgidan iborat bo'lsin");
-    if (pw !== f.elements.password2.value) return authErr('Parollar bir xil emas');
-    const d = await api('/auth/register', { method: 'POST', body: {
-      name: val(f, 'name'), shop: val(f, 'shop'), phone: '998' + localDigits(val(f, 'phone')), address: val(f, 'address'), password: pw,
-    } });
-    afterLogin(d.user);
-    toast(`Xush kelibsiz, ${d.user.name}!`);
   },
   placeOrder: async f => {
     const items = cartItems(); if (!items.length) return;
@@ -974,7 +1025,7 @@ const F = {
   },
   saveAdmin: async f => {
     const id = f.dataset.id;
-    const body = { name: val(f, 'name'), phone: '998' + localDigits(val(f, 'phone')) };
+    const body = { name: val(f, 'name'), phone: '998' + localDigits(val(f, 'phone')), customerLimit: val(f, 'customerLimit') };
     if (!id) body.password = f.elements.password.value;
     await api(id ? `/super/admins/${id}` : '/super/admins', { method: id ? 'PUT' : 'POST', body });
     closeModal();
@@ -984,6 +1035,15 @@ const F = {
   adminPw: async f => {
     await api(`/super/admins/${f.dataset.id}/password`, { method: 'PUT', body: { password: f.elements.password.value } });
     closeModal(); toast('Yangi parol saqlandi. Uni adminga ayting.'); refresh();
+  },
+  saveCustomer: async f => {
+    const id = f.dataset.id;
+    const body = { name: val(f, 'name'), shop: val(f, 'shop'), phone: '998' + localDigits(val(f, 'phone')), address: val(f, 'address') };
+    if (!id) body.password = f.elements.password.value;
+    await api(id ? `/admin/customers/${id}` : '/admin/customers', { method: id ? 'PUT' : 'POST', body });
+    closeModal();
+    toast(id ? "O'zgarishlar saqlandi" : `Mijoz qo'shildi. Kirish: ${fmtPhone(body.phone)}, parolni mijozga ayting.`);
+    refresh();
   },
   resetPw: async f => {
     await api(`/admin/customers/${f.dataset.id}/password`, { method: 'PUT', body: { password: f.elements.password.value } });
@@ -1009,7 +1069,7 @@ document.addEventListener('submit', async e => {
   if (f.dataset.busy) return;
   f.dataset.busy = '1';
   const btns = [...f.querySelectorAll('button:not([type=button])')]; btns.forEach(b => { b.disabled = true; });
-  try { await h(f); } catch (err) { if (['login', 'register', 'superLogin'].includes(f.dataset.form)) authErr(err.message); else fail(err); }
+  try { await h(f); } catch (err) { if (['login', 'superLogin'].includes(f.dataset.form)) authErr(err.message); else fail(err); }
   finally { delete f.dataset.busy; btns.forEach(b => { b.disabled = false; }); }
 });
 document.addEventListener('input', e => {

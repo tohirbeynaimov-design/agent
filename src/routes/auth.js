@@ -11,34 +11,11 @@ const events = require('../events');
 
 const r = express.Router();
 const loginLimit = rateLimiter({ windowMs: 15 * 60e3, max: 10, message: "Juda ko'p urinish bo'ldi. 15 daqiqadan keyin qayta urinib ko'ring." });
-const registerLimit = rateLimiter({ windowMs: 60 * 60e3, max: 20, message: "Juda ko'p ro'yxatdan o'tish urinishlari. Birozdan keyin urinib ko'ring." });
 
 r.get('/health', (req, res) => res.json({ ok: true }));
 r.get('/config', (req, res) => res.json({ appName: config.appName }));
 
-r.post('/auth/register', async (req, res) => {
-  registerLimit(req.ip);
-  const b = req.body || {};
-  const name = str(b.name, { min: 2, max: 80, field: 'Ism familiya' });
-  const shop = str(b.shop, { max: 100, field: "Do'kon nomi" });
-  const ph = phone(b.phone);
-  const address = str(b.address, { min: 3, max: 300, field: 'Manzil' });
-  const pw = password(b.password);
-  if (get('SELECT 1 FROM users WHERE phone = ?', ph)) {
-    throw new HttpError(409, "Bu raqam allaqachon ro'yxatdan o'tgan. Kirish bo'limidan foydalaning.");
-  }
-  const hash = await hashPassword(pw);
-  let userId;
-  try {
-    userId = Number(run(`INSERT INTO users (role, name, shop, phone, address, password_hash, created_at)
-                         VALUES ('customer', ?, ?, ?, ?, ?, ?)`, name, shop, ph, address, hash, Date.now()).lastInsertRowid);
-  } catch (e) {
-    if (String(e.message).includes('UNIQUE')) throw new HttpError(409, "Bu raqam allaqachon ro'yxatdan o'tgan.");
-    throw e;
-  }
-  createSession(req, res, userId);
-  res.status(201).json({ user: publicUser(get('SELECT * FROM users WHERE id = ?', userId)) });
-});
+// Mijozlar o'zlari ro'yxatdan o'ta olmaydi: ularni admin qo'shadi (POST /admin/customers)
 
 r.post('/auth/login', async (req, res) => {
   const b = req.body || {};

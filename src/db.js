@@ -129,6 +129,47 @@ const MIGRATIONS = [
   ALTER TABLE products ADD COLUMN stock REAL CHECK (stock IS NULL OR stock >= 0);
   ALTER TABLE order_items ADD COLUMN stock_taken INTEGER NOT NULL DEFAULT 0;
   `,
+  // v4: ombor harakatlari jurnali — har bir kirim/chiqim yoziladi (qty: + kirdi, - chiqdi; after: shundan keyingi qoldiq).
+  // Avvalgi ma'lumotdan tiklanadi: boshlang'ich qoldiq = hozirgi qoldiq + buyurtmalarda olingan miqdor.
+  {
+    sql: `
+    CREATE TABLE stock_moves (
+      id         INTEGER PRIMARY KEY,
+      product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+      name       TEXT    NOT NULL,
+      unit       TEXT    NOT NULL,
+      kind       TEXT    NOT NULL CHECK (kind IN ('boshlangich', 'kirim', 'chiqim', 'tuzatish', 'buyurtma', 'qaytdi')),
+      qty        REAL    NOT NULL,
+      after      REAL    NOT NULL,
+      order_id   INTEGER,
+      by_user    INTEGER,
+      at         INTEGER NOT NULL
+    );
+    CREATE INDEX stock_moves_at ON stock_moves(at);
+    CREATE INDEX stock_moves_product ON stock_moves(product_id, at);
+    `,
+    fn() {
+      const r2 = n => Math.round(n * 100) / 100;
+      const ins = db.prepare(`INSERT INTO stock_moves (product_id, name, unit, kind, qty, after, order_id, by_user, at)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      for (const p of db.prepare('SELECT * FROM products WHERE stock IS NOT NULL').all()) {
+        const taken = db.prepare(`SELECT oi.qty, o.id oid, o.customer_id, o.created_at FROM order_items oi JOIN orders o ON o.id = oi.order_id
+                                  WHERE oi.product_id = ? AND oi.stock_taken = 1 ORDER BY o.created_at, oi.id`).all(p.id);
+        let left = r2(p.stock + taken.reduce((s, t) => s + t.qty, 0));
+        ins.run(p.id, p.name, p.unit, 'boshlangich', left, left, null, null, Math.min(p.created_at, taken[0]?.created_at ?? p.created_at));
+        for (const t of taken) {
+          left = r2(left - t.qty);
+          ins.run(p.id, p.name, p.unit, 'buyurtma', -t.qty, left, t.oid, t.customer_id, t.created_at);
+        }
+      }
+    },
+  },
+  // v5: mijozlarni admin qo'shadi. customer_limit — admin nechta mijoz qo'sha oladi (super admin belgilaydi; NULL — cheklanmagan).
+  // Mijozning created_by ustuni — uni qo'shgan admin.
+  `
+  ALTER TABLE users ADD COLUMN customer_limit INTEGER CHECK (customer_limit IS NULL OR customer_limit >= 0);
+  CREATE INDEX users_created_by ON users(created_by);
+  `,
 ];
 
 function migrate() {
@@ -139,6 +180,7 @@ function migrate() {
     try {
       tx(() => {
         db.exec(m.sql);
+        if (m.fn) m.fn();
         if (m.fkOff) {
           const broken = db.prepare('PRAGMA foreign_key_check').all();
           if (broken.length) throw new Error('Migratsiyadan keyin bog\'lanishlar buzildi: ' + JSON.stringify(broken.slice(0, 3)));

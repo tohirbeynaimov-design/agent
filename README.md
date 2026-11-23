@@ -2,13 +2,14 @@
 
 **Agent UZ** — mijozlar (do'konlar) ta'minotchiga telefon yoki kompyuterdan buyurtma beradigan web ilova.
 
-- **Mijoz paneli:** telefon raqam va parol bilan ro'yxatdan o'tish, katalog (rasm, kategoriya, qidiruv), savat, buyurtma berish, buyurtma holatini kuzatish, buyurtmani takrorlash, admin bilan chat (matn va rasm).
+- **Mijoz paneli:** admin bergan telefon raqam va parol bilan kirish (mijoz o'zi ro'yxatdan o'ta olmaydi), katalog (rasm, kategoriya, qidiruv), savat, buyurtma berish, buyurtma holatini kuzatish, buyurtmani takrorlash, admin bilan chat (matn va rasm).
 - **Admin paneli:** yangi buyurtmalar real vaqtda signal bilan keladi. Buyurtma holatlari: Yangi → Yig'ilmoqda → Yo'lda → Yetkazildi (yoki Bekor qilindi). Yig'ish varaqasini chop etish mumkin.
   - Mahsulot qo'shish (omborda nechta borligi bilan), tahrirlash va rasm yuklash.
   - **Ombor** bo'limi: har bir mahsulotdan omborda nechta qolgani. Mijoz buyurtma berganda qoldiq avtomatik kamayadi (10 qopdan 2 qop olinsa — 8 qop qoladi), buyurtma bekor qilinsa qaytadi. Ombordagidan ko'p buyurtma berib bo'lmaydi; tugagan mahsulot katalogda "Tugagan" deb chiqadi. Yangi kelgan mahsulot "+ Kirim", sanoqdan keyingi aniq son "Tuzatish" tugmasi bilan kiritiladi.
   - Kunlik, haftalik va oylik hisobot: nima qancha sotilgani va ITOGO. Hisobotni Excel (CSV) faylga yuklab olish va chop etish mumkin.
-  - Mijozlar ro'yxati, mijozga yangi parol qo'yish, chat.
-- **Super admin paneli** (`/super` sahifasi): faqat admin hisoblarini boshqaradi. Admin qo'shish, tahrirlash, parolini tiklash, bloklash va o'chirish mumkin. Super admin buyurtma, mahsulot, hisobot va chatlarni ko'rmaydi.
+  - **Ombor hisobi** (Hisobotlar → "Ombor hisobi"): tanlangan kun/hafta/oyda har bir mahsulotdan boshida qancha bo'lgani, qancha kirgani, qancha chiqqani va qancha qolgani, hamda har bir kirim va chiqim vaqti bilan (kim qo'shdi, qaysi buyurtma bilan ketdi). Excel'ga yuklab olish mumkin.
+  - Mijozlarni admin qo'shadi (ism, do'kon, telefon, manzil, parol), tahrirlaydi va yangi parol qo'yadi; chat.
+- **Super admin paneli** (`/super` sahifasi): faqat admin hisoblarini boshqaradi. Admin qo'shish (har bir admin nechta mijoz qo'sha olishini belgilab), tahrirlash, parolini tiklash, bloklash va o'chirish mumkin. Super admin buyurtma, mahsulot, hisobot va chatlarni ko'rmaydi.
 - Telefon va kompyuter brauzerida bir xil qulay ishlaydi. Telefonda menyu ekranning pastida turadi.
 
 Texnologiya: **Node.js 22 + Express + SQLite** (bitta fayl baza, alohida baza serveri kerak emas). Real vaqtdagi xabarlar SSE orqali ishlaydi.
@@ -75,7 +76,7 @@ docker compose up -d --build
 Bir-ikki daqiqadan keyin quyidagilarni bajaring. HTTPS sertifikati avtomatik olinadi va yangilanib turadi.
 1. `https://DOMENINGIZ/super` ni oching va super admin login-paroli bilan kiring.
 2. "+ Admin qo'shish" tugmasi bilan admin(lar) hisobini oching: ism, telefon, parol.
-3. Adminlar `https://DOMENINGIZ` sahifasida telefon va parol bilan kiradi. Mijozlar ham shu manzildan ro'yxatdan o'tadi.
+3. Adminlar `https://DOMENINGIZ` sahifasida telefon va parol bilan kiradi. Mijozlar ham shu manzildan, admin bergan telefon raqam va parol bilan kiradi.
 
 Foydali buyruqlar:
 ```bash

@@ -63,17 +63,37 @@ test('admin .env bo\'yicha yaratiladi va kira oladi', async () => {
   assert.match(r.headers.get('set-cookie'), /HttpOnly/i);
 });
 
-test("mijoz ro'yxatdan o'tadi (telefon + parol)", async () => {
-  const r = await cust('POST', '/api/auth/register', { name: 'Azizbek Karimov', shop: 'Baraka', phone: '90 111 22 33', address: 'Chilonzor 9', password: '123456' });
+test("mijozni admin qo'shadi, mijoz o'sha telefon va parol bilan kiradi; o'zi ro'yxatdan o'ta olmaydi", async () => {
+  const self = await cust('POST', '/api/auth/register', { name: 'Azizbek', phone: '90 111 22 33', address: 'Chilonzor 9', password: '123456' });
+  assert.equal(self.status, 404, "ro'yxatdan o'tish yopilgan");
+  assert.equal((await cust('POST', '/api/admin/customers', { name: 'X', phone: '901112233', address: 'Manzil', password: '123456' })).status, 401);
+
+  const r = await admin('POST', '/api/admin/customers', { name: 'Azizbek Karimov', shop: 'Baraka', phone: '90 111 22 33', address: 'Chilonzor 9', password: '123456' });
   assert.equal(r.status, 201);
-  assert.equal(r.data.user.phone, '998901112233');
-  custId = r.data.user.id;
-  const dup = await other('POST', '/api/auth/register', { name: 'Boshqa', phone: '998901112233', address: 'Manzil', password: '123456' });
+  assert.equal(r.data.customer.phone, '998901112233');
+  custId = r.data.customer.id;
+  const dup = await admin('POST', '/api/admin/customers', { name: 'Boshqa', phone: '998901112233', address: 'Manzil', password: '123456' });
   assert.equal(dup.status, 409);
-  const short = await other('POST', '/api/auth/register', { name: 'Boshqa', phone: '998931234567', address: 'Manzil', password: '123' });
+  const short = await admin('POST', '/api/admin/customers', { name: 'Boshqa', phone: '998931234567', address: 'Manzil', password: '123' });
   assert.equal(short.status, 400);
-  const ok = await other('POST', '/api/auth/register', { name: 'Dilnoza', phone: '998931234567', address: 'Yunusobod', password: '654321' });
-  assert.equal(ok.status, 201);
+  assert.equal((await admin('POST', '/api/admin/customers', { name: 'Dilnoza', phone: '998931234567', address: 'Yunusobod', password: '654321' })).status, 201);
+
+  assert.equal((await cust('POST', '/api/auth/login', { phone: '998901112233', password: 'notogri' })).status, 401);
+  const login = await cust('POST', '/api/auth/login', { phone: '+998 90 111 22 33', password: '123456' });
+  assert.equal(login.status, 200);
+  assert.equal(login.data.user.role, 'customer');
+  assert.equal(login.data.user.shop, 'Baraka');
+  assert.equal((await other('POST', '/api/auth/login', { phone: '998931234567', password: '654321' })).status, 200);
+
+  // Ro'yxatda kim qo'shgani va limit (.env admini uchun limit yo'q)
+  const list = await admin('GET', '/api/admin/customers');
+  assert.equal(list.data.limit.used, 2);
+  assert.equal(list.data.limit.max, null);
+  assert.ok(list.data.customers.every(c => c.mine));
+  // Tahrirlash: xato yozilgan raqamni tuzatish
+  const ed = await admin('PUT', `/api/admin/customers/${custId}`, { name: 'Azizbek Karimov', shop: 'Baraka', phone: '998901112233', address: 'Chilonzor 10' });
+  assert.equal(ed.status, 200);
+  assert.equal((await admin('PUT', `/api/admin/customers/${custId}`, { name: 'Azizbek', phone: '998931234567', address: 'Chilonzor 9' })).status, 409);
 });
 
 test('parol bazada ochiq holda saqlanmaydi', () => {
@@ -223,6 +243,25 @@ test("ombor: buyurtmada ayiriladi, bekor qilinsa qaytadi, yetmasa buyurtma beril
   // Tahrirlashda stock berilmasa qoldiq o'zgarmaydi
   await admin('PUT', `/api/products/${sid}`, { name: 'Shakar', category: 'Shakar', unit: 'qop', price: 410000 });
   assert.equal(await stockOf(sid), 0);
+
+  // Ombor hisobi: har bir kirim va chiqim tarixda, boshida + kirdi - chiqdi = qoldi
+  const from = Date.now() - 3600_000, to = Date.now() + 3600_000;
+  const rep = await admin('GET', `/api/admin/stock-report?from=${from}&to=${to}`);
+  assert.equal(rep.status, 200);
+  const sh = rep.data.products.find(p => p.name === 'Shakar');
+  assert.deepEqual({ start: sh.start, in: sh.in, out: sh.out, end: sh.end }, { start: 0, in: 19, out: 19, end: 0 });
+  const kinds = rep.data.moves.filter(m => m.name === 'Shakar').reverse().map(m => `${m.kind}:${m.qty}:${m.after}`);
+  assert.deepEqual(kinds, ['boshlangich:10:10', 'buyurtma:-2:8', 'qaytdi:2:10', 'buyurtma:-2:8', 'qaytdi:2:10', 'kirim:5:15', 'tuzatish:-15:0']);
+  for (const p of rep.data.products) assert.equal(Math.round((p.start + p.in - p.out) * 100) / 100, p.end, p.name);
+  // Keyingi davrda boshlang'ich qoldiq — oldingi davr oxiridagi qoldiq
+  const later = await admin('GET', `/api/admin/stock-report?from=${to}&to=${to + 3600_000}`);
+  assert.equal(later.data.products.find(p => p.name === 'Shakar').start, 0);
+  assert.equal(later.data.moves.length, 0);
+  const scsv = await admin('GET', `/api/admin/stock-report.csv?from=${from}&to=${to}`);
+  assert.equal(scsv.status, 200);
+  assert.match(scsv.data, /Kirdi.*Chiqdi/);
+  assert.match(scsv.data, /Bekor qilindi, qaytdi/);
+  assert.equal((await cust('GET', `/api/admin/stock-report?from=${from}&to=${to}`)).status, 403);
 
   // Qoldig'i kiritilmagan eski mahsulot cheklanmaydi, bekor qilinganda ham qoldiq paydo bo'lmaydi
   db.prepare('UPDATE products SET stock = NULL WHERE id = ?').run(sid);

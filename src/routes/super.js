@@ -3,7 +3,7 @@
 // Buyurtma, mahsulot, hisobot va chatga super admin kira olmaydi.
 const express = require('express');
 const { get, all, run } = require('../db');
-const { HttpError, str, phone, staffPassword, id } = require('../util');
+const { HttpError, bad, str, phone, staffPassword, int, id } = require('../util');
 const { requireSuper, hashPassword } = require('../auth');
 const events = require('../events');
 
@@ -11,7 +11,14 @@ const r = express.Router();
 
 const adminOut = a => ({
   id: a.id, name: a.name, phone: a.phone, active: !!a.active, createdAt: a.created_at, lastLoginAt: a.last_login_at,
+  customerLimit: a.customer_limit,
+  customersAdded: get("SELECT COUNT(*) n FROM users WHERE role = 'customer' AND created_by = ?", a.id).n,
 });
+// Admin nechta mijoz qo'sha oladi — super admin belgilaydi
+function readLimit(v) {
+  if (v === undefined || v === null || String(v).trim() === '') throw bad("Admin nechta mijoz qo'sha olishini kiriting");
+  return int(v, { min: 0, max: 100_000, field: 'Mijozlar soni' });
+}
 
 function getAdmin(rawId) {
   const a = get("SELECT * FROM users WHERE id = ? AND role = 'admin'", id(rawId));
@@ -41,9 +48,10 @@ r.post('/super/admins', requireSuper, async (req, res) => {
   const name = str(b.name, { min: 2, max: 80, field: 'Ism familiya' });
   const ph = phone(b.phone);
   const pw = staffPassword(b.password);
+  const limit = readLimit(b.customerLimit);
   ensurePhoneFree(ph);
-  const newId = Number(run(`INSERT INTO users (role, name, phone, password_hash, created_at, created_by)
-                            VALUES ('admin', ?, ?, ?, ?, ?)`, name, ph, await hashPassword(pw), Date.now(), req.user.id).lastInsertRowid);
+  const newId = Number(run(`INSERT INTO users (role, name, phone, password_hash, created_at, created_by, customer_limit)
+                            VALUES ('admin', ?, ?, ?, ?, ?, ?)`, name, ph, await hashPassword(pw), Date.now(), req.user.id, limit).lastInsertRowid);
   res.status(201).json({ admin: adminOut(get('SELECT * FROM users WHERE id = ?', newId)) });
 });
 
@@ -52,8 +60,9 @@ r.put('/super/admins/:id', requireSuper, (req, res) => {
   const b = req.body || {};
   const name = str(b.name, { min: 2, max: 80, field: 'Ism familiya' });
   const ph = phone(b.phone);
+  const limit = b.customerLimit === undefined ? a.customer_limit : readLimit(b.customerLimit);
   ensurePhoneFree(ph, a.id);
-  run('UPDATE users SET name = ?, phone = ? WHERE id = ?', name, ph, a.id);
+  run('UPDATE users SET name = ?, phone = ?, customer_limit = ? WHERE id = ?', name, ph, limit, a.id);
   res.json({ admin: adminOut(get('SELECT * FROM users WHERE id = ?', a.id)) });
 });
 

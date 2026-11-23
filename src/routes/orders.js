@@ -77,7 +77,7 @@ r.post('/orders', requireCustomer, (req, res) => {
         oid, l.p.id, l.p.name, l.p.unit, l.p.price, l.qty, l.sum);
     }
     run('INSERT INTO order_history (order_id, status, at, by_user) VALUES (?, ?, ?, ?)', oid, 'yangi', now, req.user.id);
-    takeOrder(oid);   // ombordan ayiramiz; yetmasa butun buyurtma bekor bo'ladi
+    takeOrder(oid, req.user.id);   // ombordan ayiramiz; yetmasa butun buyurtma bekor bo'ladi
     return oid;
   });
 
@@ -137,7 +137,7 @@ r.post('/orders/:id/status', requireAdmin, (req, res) => {
   if (o.status !== status) {
     const stockMoved = tx(() => {
       // Bekor qilinsa — mahsulotlar omborga qaytadi; bekor qilingan buyurtma tiklansa — qayta ayiriladi
-      const moved = status === 'bekor' ? returnOrder(oid) : o.status === 'bekor' ? takeOrder(oid) : false;
+      const moved = status === 'bekor' ? returnOrder(oid, req.user.id) : o.status === 'bekor' ? takeOrder(oid, req.user.id) : false;
       setStatus(oid, status, req.user.id);
       return moved;
     });
@@ -156,7 +156,7 @@ r.post('/orders/:id/cancel', requireCustomer, (req, res) => {
   if (o.status !== 'yangi') {
     throw new HttpError(409, "Buyurtma yig'ilishni boshlagan, endi uni bekor qilib bo'lmaydi. Admin bilan chatda bog'laning.");
   }
-  const stockMoved = tx(() => { const moved = returnOrder(oid); setStatus(oid, 'bekor', req.user.id); return moved; });
+  const stockMoved = tx(() => { const moved = returnOrder(oid, req.user.id); setStatus(oid, 'bekor', req.user.id); return moved; });
   events.emit('order:status', { id: oid, status: 'bekor', customerId: o.customer_id }, { customerId: o.customer_id });
   if (stockMoved) productsChanged();
   res.json({ ok: true, status: 'bekor' });

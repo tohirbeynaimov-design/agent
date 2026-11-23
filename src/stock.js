@@ -16,8 +16,16 @@ function readStock(v, field = 'Ombordagi miqdor') {
   return n;
 }
 
+// Ombor jurnaliga yozuv: qty — o'zgarish (+ kirdi, - chiqdi), after — shundan keyingi qoldiq
+function logMove(p, kind, qty, after, { orderId = null, by = null } = {}) {
+  qty = r2(qty);
+  if (qty === 0 && kind !== 'boshlangich') return;
+  run(`INSERT INTO stock_moves (product_id, name, unit, kind, qty, after, order_id, by_user, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    p.id, p.name, p.unit, kind, qty, r2(after), orderId, by, Date.now());
+}
+
 // Buyurtmadagi mahsulotlarni ombordan ayiradi. Yetmasa — 409 va hech narsa o'zgarmaydi (tx bekor bo'ladi)
-function takeOrder(orderId) {
+function takeOrder(orderId, by = null) {
   const items = all('SELECT id, product_id, qty FROM order_items WHERE order_id = ? AND stock_taken = 0 AND product_id IS NOT NULL', orderId);
   for (const it of items) {
     const p = get('SELECT id, name, unit, stock FROM products WHERE id = ?', it.product_id);
@@ -30,20 +38,24 @@ function takeOrder(orderId) {
     }
     run('UPDATE products SET stock = ?, updated_at = ? WHERE id = ?', left, Date.now(), p.id);
     run('UPDATE order_items SET stock_taken = 1 WHERE id = ?', it.id);
+    logMove(p, 'buyurtma', -it.qty, left, { orderId, by });
   }
   return items.length > 0;
 }
 
 // Bekor qilingan buyurtmaning mahsulotlarini omborga qaytaradi
-function returnOrder(orderId) {
+function returnOrder(orderId, by = null) {
   const items = all('SELECT id, product_id, qty FROM order_items WHERE order_id = ? AND stock_taken = 1', orderId);
   for (const it of items) {
-    if (it.product_id !== null) {
-      run('UPDATE products SET stock = ROUND(stock + ?, 2), updated_at = ? WHERE id = ? AND stock IS NOT NULL', it.qty, Date.now(), it.product_id);
+    const p = it.product_id !== null && get('SELECT id, name, unit, stock FROM products WHERE id = ?', it.product_id);
+    if (p && p.stock !== null) {
+      const left = r2(p.stock + it.qty);
+      run('UPDATE products SET stock = ?, updated_at = ? WHERE id = ?', left, Date.now(), p.id);
+      logMove(p, 'qaytdi', it.qty, left, { orderId, by });
     }
     run('UPDATE order_items SET stock_taken = 0 WHERE id = ?', it.id);
   }
   return items.length > 0;
 }
 
-module.exports = { MAX_STOCK, r2, fmt, readStock, takeOrder, returnOrder };
+module.exports = { MAX_STOCK, r2, fmt, readStock, logMove, takeOrder, returnOrder };
