@@ -1,0 +1,65 @@
+# GitHub'ga (main) yuklanganda: avval testlar, ular o'tsa — server avtomatik yangilanadi.
+# Kerakli sirlar (Settings → Secrets and variables → Actions → New repository secret):
+#   SERVER_HOST     — server IP manzili, masalan 13.53.187.56
+#   SERVER_USER     — SSH foydalanuvchisi, masalan ubuntu
+#   SERVER_SSH_KEY  — serverga kiradigan .pem / SSH kalitning to'liq matni
+#   APP_DIR         — (ixtiyoriy) ilova papkasi serverda, standart: /opt/agent-uz
+#   RESTART_CMD     — (ixtiyoriy) ilovani qayta ishga tushirish buyrug'i, avtomatik aniqlanmasa
+name: Serverga joylash
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Testlar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    name: Serverni yangilash
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sirlar kiritilganini tekshirish
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          missing=""
+          [ -n "$HOST" ] || missing="$missing SERVER_HOST"
+          [ -n "$SSH_USER" ] || missing="$missing SERVER_USER"
+          [ -n "$SSH_KEY" ] || missing="$missing SERVER_SSH_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::GitHub'da sirlar kiritilmagan:$missing (Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
+      - name: Serverda deploy.sh ni ishga tushirish
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          APP_DIR: ${{ secrets.APP_DIR }}
+          RESTART_CMD: ${{ secrets.RESTART_CMD }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -T 15 -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          remote_env="APP_DIR=$(printf '%q' "${APP_DIR:-/opt/agent-uz}") RESTART_CMD=$(printf '%q' "$RESTART_CMD")"
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 "$SSH_USER@$HOST" "$remote_env bash -s" < scripts/deploy.sh

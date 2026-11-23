@@ -91,6 +91,22 @@ cd /opt/agent-uz && docker compose up -d --build
 ```
 Ma'lumotlar (baza va rasmlar) alohida Docker hajmida (`app_data`) saqlanadi, yangilashda o'chmaydi.
 
+### 2.6. GitHub orqali avtomatik yangilanish
+GitHub'ga (`main`) yuklaganingizda avval testlar ishlaydi, ular o'tsa server o'zi yangilanadi (`.github/workflows/deploy.yml` → serverda `scripts/deploy.sh`).
+Skript har safar `data/` zaxirasini `~/agent-uz-zaxira` ga oladi, kodni yangilaydi va ilovani qayta ishga tushiradi (Docker, systemd yoki pm2 — avtomatik aniqlanadi).
+
+Bir martalik sozlash:
+1. Serverda ilova `git clone` bilan o'rnatilgan bo'lsin (`.git` papkasi bo'lishi kerak).
+2. GitHub'da repo → **Settings → Secrets and variables → Actions → New repository secret** orqali qo'shing:
+   - `SERVER_HOST`: server IP manzili
+   - `SERVER_USER`: SSH foydalanuvchisi (masalan `ubuntu`)
+   - `SERVER_SSH_KEY`: serverga kiradigan `.pem` kalitning to'liq matni
+   - `APP_DIR` (ixtiyoriy): ilova papkasi, standart `/opt/agent-uz`
+   - `RESTART_CMD` (ixtiyoriy): ilova boshqacha ishga tushirilgan bo'lsa, qayta ishga tushirish buyrug'i
+3. Natijani repo → **Actions** bo'limida ko'rasiz. Qo'lda ishga tushirish: Actions → "Serverga joylash" → **Run workflow**.
+
+Qo'lda yangilash ham mumkin (serverda): `APP_DIR=/opt/agent-uz bash scripts/deploy.sh`
+
 ---
 
 ## 3. Kundalik ishlar
