@@ -4,7 +4,8 @@
 
 - **Mijoz paneli:** telefon raqam va parol bilan ro'yxatdan o'tish, katalog (rasm, kategoriya, qidiruv), savat, buyurtma berish, buyurtma holatini kuzatish, buyurtmani takrorlash, admin bilan chat (matn va rasm).
 - **Admin paneli:** yangi buyurtmalar real vaqtda signal bilan keladi. Buyurtma holatlari: Yangi → Yig'ilmoqda → Yo'lda → Yetkazildi (yoki Bekor qilindi). Yig'ish varaqasini chop etish mumkin.
-  - Mahsulot qo'shish, tahrirlash va rasm yuklash.
+  - Mahsulot qo'shish (omborda nechta borligi bilan), tahrirlash va rasm yuklash.
+  - **Ombor** bo'limi: har bir mahsulotdan omborda nechta qolgani. Mijoz buyurtma berganda qoldiq avtomatik kamayadi (10 qopdan 2 qop olinsa — 8 qop qoladi), buyurtma bekor qilinsa qaytadi. Ombordagidan ko'p buyurtma berib bo'lmaydi; tugagan mahsulot katalogda "Tugagan" deb chiqadi. Yangi kelgan mahsulot "+ Kirim", sanoqdan keyingi aniq son "Tuzatish" tugmasi bilan kiritiladi.
   - Kunlik, haftalik va oylik hisobot: nima qancha sotilgani va ITOGO. Hisobotni Excel (CSV) faylga yuklab olish va chop etish mumkin.
   - Mijozlar ro'yxati, mijozga yangi parol qo'yish, chat.
 - **Super admin paneli** (`/super` sahifasi): faqat admin hisoblarini boshqaradi. Admin qo'shish, tahrirlash, parolini tiklash, bloklash va o'chirish mumkin. Super admin buyurtma, mahsulot, hisobot va chatlarni ko'rmaydi.

@@ -134,7 +134,7 @@ async function refresh() {
       else if (isAdmin()) {
         const t = ui.adminTab;
         if (t === 'buyurtmalar') jobs.push(loadAdminOrders());
-        if (t === 'mahsulotlar') jobs.push(loadProducts());
+        if (t === 'mahsulotlar' || t === 'ombor') jobs.push(loadProducts());
         if (t === 'hisobotlar') jobs.push(loadReport());
         if (t === 'mijozlar') jobs.push(loadCustomers());
         if (t === 'chat') { jobs.push(loadConvs(), loadCustomers()); if (ui.chatWith) jobs.push(loadThread(ui.chatWith)); }
@@ -183,7 +183,7 @@ function startEvents() {
     soon();
   });
   es.addEventListener('read', soon);
-  es.addEventListener('products', () => { if (!isAdmin() || ui.adminTab === 'mahsulotlar') soon(); });
+  es.addEventListener('products', () => { if (!isAdmin() || ui.adminTab === 'mahsulotlar' || ui.adminTab === 'ombor') soon(); });
   es.onerror = () => { esBroken = true; };
   es.onopen = () => { if (esBroken) { esBroken = false; soon(); } };
 }
@@ -226,6 +226,7 @@ const ICONS = {
   buyurtmalar: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
   chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z"/>',
   mahsulotlar: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+  ombor: '<path d="M3 21V9l9-5 9 5v12"/><path d="M7 21v-9h10v9"/><path d="M7 15h10M7 18h10"/>',
   hisobotlar: '<path d="M3 21h18"/><path d="M6 17v-6M11 17V5M16 17v-8M21 17v-4"/>',
   mijozlar: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
   clip: '<path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/>',
@@ -332,7 +333,8 @@ function gridHtml() {
     return `<div class="pcard"><div class="pimg">${photoHtml(p)}</div><div class="pcat">${esc(p.category)}</div>
       <div class="pname">${esc(p.name)}</div>
       <div class="pprice">${money(p.price)} <span>/ ${esc(p.unit)}</span></div>
-      ${n ? qtyCtl(p.id, n) : `<button class="btn primary block" data-a="add" data-id="${p.id}">Savatga</button>`}</div>`;
+      ${p.soldOut ? `<button class="btn block" disabled>Tugagan</button>`
+        : n ? qtyCtl(p.id, n) : `<button class="btn primary block" data-a="add" data-id="${p.id}">Savatga</button>`}</div>`;
   }).join('');
 }
 const qtyCtl = (id, n) => `<div class="qty"><button data-a="dec" data-id="${id}" aria-label="kamaytirish">−</button><input data-qty="${id}" value="${num(n)}" inputmode="decimal" aria-label="miqdor"><button data-a="inc" data-id="${id}" aria-label="ko'paytirish">+</button></div>`;
@@ -380,9 +382,9 @@ function viewMyOrders() {
 
 /* ---------- Admin paneli ---------- */
 function viewAdmin() {
-  const tabs = [['buyurtmalar', 'Buyurtmalar', S.summary.newOrders, true], ['mahsulotlar', 'Mahsulotlar'], ['hisobotlar', 'Hisobotlar'], ['mijozlar', 'Mijozlar'], ['chat', 'Chat', S.summary.unread, true]];
+  const tabs = [['buyurtmalar', 'Buyurtmalar', S.summary.newOrders, true], ['mahsulotlar', 'Mahsulotlar'], ['ombor', 'Ombor'], ['hisobotlar', 'Hisobotlar'], ['mijozlar', 'Mijozlar'], ['chat', 'Chat', S.summary.unread, true]];
   const ready = S.loaded[tabKey()];
-  const body = !ready ? loadingHtml() : { buyurtmalar: viewAdminOrders, mahsulotlar: viewAdminProducts, hisobotlar: viewReports, mijozlar: viewAdminCustomers, chat: viewAdminChat }[ui.adminTab]();
+  const body = !ready ? loadingHtml() : { buyurtmalar: viewAdminOrders, mahsulotlar: viewAdminProducts, ombor: viewStock, hisobotlar: viewReports, mijozlar: viewAdminCustomers, chat: viewAdminChat }[ui.adminTab]();
   return `<header class="top admin">${header(S.me, 'admin')}${navHtml('adminTab', ui.adminTab, tabs)}</header>
     <main class="wrap ${ui.adminTab === 'chat' ? 'chat-page' : ''}">${body}</main>`;
 }
@@ -450,16 +452,51 @@ function viewAdminProducts() {
   return `<div class="sec-head"><h2>Mahsulotlar <span class="muted" style="font-weight:400">(${S.products.length})</span></h2>
       <button class="btn primary" data-a="newProduct">+ Mahsulot qo'shish</button></div>
     ${S.products.length ? `<div class="card flush tbl-wrap"><table class="tbl">
-      <thead><tr><th>Rasm</th><th>Nomi</th><th class="hide-m">Kategoriya</th><th class="hide-m">Birlik</th><th class="r hide-m">Narx</th><th class="hide-m">Holat</th><th></th></tr></thead>
+      <thead><tr><th>Rasm</th><th>Nomi</th><th class="hide-m">Kategoriya</th><th class="hide-m">Birlik</th><th class="r hide-m">Narx</th><th class="r hide-m">Omborda</th><th class="hide-m">Holat</th><th></th></tr></thead>
       <tbody>${S.products.map(p => `<tr class="${p.active ? '' : 'dim'}">
         <td class="thumb"><div class="thumb-box">${photoHtml(p)}</div></td>
-        <td><b>${esc(p.name)}</b><div class="muted small m-only">${esc(p.category)}${p.active ? '' : ' · Yashirin'}</div><div class="m-only"><b>${money(p.price)}</b> <span class="muted small">/ ${esc(p.unit)}</span></div></td>
+        <td><b>${esc(p.name)}</b><div class="muted small m-only">${esc(p.category)}${p.active ? '' : ' · Yashirin'}</div><div class="m-only"><b>${money(p.price)}</b> <span class="muted small">/ ${esc(p.unit)}</span></div><div class="m-only small">Omborda: ${stockHtml(p)}</div></td>
         <td class="hide-m">${esc(p.category)}</td><td class="hide-m">${esc(p.unit)}</td>
         <td class="r nowrap hide-m">${money(p.price)}</td>
+        <td class="r nowrap hide-m">${stockHtml(p)}</td>
         <td class="hide-m">${p.active ? '<span class="pill ok">Sotuvda</span>' : '<span class="pill">Yashirin</span>'}</td>
         <td class="r"><div class="acts"><button class="btn sm" data-a="editProduct" data-id="${p.id}">Tahrirlash</button>
           <button class="btn sm" data-a="toggleProduct" data-id="${p.id}">${p.active ? 'Yashirish' : "Sotuvga qo'yish"}</button></div></td></tr>`).join('')}
       </tbody></table></div>` : `<div class="card">${empty('📦', "Hali mahsulot yo'q. \"+ Mahsulot qo'shish\" tugmasini bosing.")}</div>`}`;
+}
+
+/* Ombor */
+const stockHtml = p => p.stock == null ? '<span class="pill">Kiritilmagan</span>'
+  : p.stock <= 0 ? `<span class="pill bad">Tugagan · 0 ${esc(p.unit)}</span>`
+  : `<b>${num(p.stock)}</b> ${esc(p.unit)}`;
+function viewStock() {
+  const list = [...S.products].sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  const out = list.filter(p => p.stock != null && p.stock <= 0).length;
+  const unset = list.filter(p => p.stock == null).length;
+  return `<div class="sec-head"><h2>Ombor <span class="muted" style="font-weight:400">(${list.length})</span></h2>
+      <span class="muted small">${out ? `<span class="pill bad">Tugagan: ${out}</span> ` : ''}${unset ? `<span class="pill">Qoldig'i kiritilmagan: ${unset}</span>` : ''}</span></div>
+    <p class="muted small" style="margin:-4px 0 12px">Mijoz buyurtma berganda mahsulot ombordan avtomatik ayiriladi, buyurtma bekor qilinsa qaytariladi.</p>
+    ${list.length ? `<div class="card flush tbl-wrap"><table class="tbl">
+      <thead><tr><th>Mahsulot</th><th class="hide-m">Kategoriya</th><th class="r">Omborda</th><th></th></tr></thead>
+      <tbody>${list.map(p => `<tr class="${p.active ? '' : 'dim'}">
+        <td><b>${esc(p.name)}</b><div class="muted small m-only">${esc(p.category)}</div>${p.active ? '' : '<div class="muted small">Yashirin</div>'}</td>
+        <td class="hide-m">${esc(p.category)}</td>
+        <td class="r nowrap">${stockHtml(p)}</td>
+        <td class="r"><div class="acts"><button class="btn sm primary" data-a="stockIn" data-id="${p.id}">+ Kirim</button>
+          <button class="btn sm" data-a="stockSet" data-id="${p.id}">Tuzatish</button></div></td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="card">${empty('🏬', "Omborda hali mahsulot yo'q. Avval \"Mahsulotlar\" bo'limida mahsulot qo'shing.")}</div>`}`;
+}
+// mode: 'in' — kirim (nechta keldi), 'set' — aniq qoldiqni yozish (sanoqdan keyin)
+function stockForm(p, mode) {
+  ui.openOrderId = null;
+  const now = p.stock == null ? 'kiritilmagan' : `${num(p.stock)} ${esc(p.unit)}`;
+  openModal(`<form data-form="saveStock" data-id="${p.id}" data-mode="${mode}">
+    <div class="m-head"><h3>${mode === 'in' ? 'Omborga kirim' : 'Qoldiqni tuzatish'}</h3><button type="button" class="x" data-a="closeModal" aria-label="Yopish">✕</button></div>
+    <p style="margin:0 0 12px"><b>${esc(p.name)}</b><br><span class="muted">Hozir omborda: ${now}</span></p>
+    <label>${mode === 'in' ? `Nechta keldi? (${esc(p.unit)}) *` : `Omborda aniq nechta bor? (${esc(p.unit)}) *`}
+      <input name="qty" type="number" min="${mode === 'in' ? '0.01' : '0'}" step="0.01" required inputmode="decimal" value="${mode === 'set' && p.stock != null ? p.stock : ''}" placeholder="0"></label>
+    <div class="m-actions"><button type="button" class="btn" data-a="closeModal">Bekor</button><button class="btn primary">Saqlash</button></div></form>`);
+  setTimeout(() => { const i = $('#modalBox input[name=qty]'); i?.focus(); i?.select(); }, 30);
 }
 function updatePhotoUI() {
   const box = $('#photoDrop'); if (!box) return;
@@ -512,6 +549,10 @@ function productForm(p) {
       <label>O'lchov birligi<select name="unit">${units.map(u => `<option ${p?.unit === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
       <label>Narx (so'm) *<input name="price" type="number" min="1" step="1" required value="${p ? p.price : ''}" placeholder="0"></label>
     </div>
+    ${!p || p.stock == null
+      ? `<label>Omborda nechta bor? *<input name="stock" type="number" min="0" step="0.01" required inputmode="decimal" placeholder="Masalan: 10">
+          <span class="muted small" style="font-weight:400">O'lchov birligida: 10 qop, 25 kg va hokazo.</span></label>`
+      : `<p class="muted small" style="margin:0 0 12px">Omborda: <b>${num(p.stock)} ${esc(p.unit)}</b>. Qoldiq "Ombor" bo'limida o'zgartiriladi.</p>`}
     <label class="check"><input type="checkbox" name="active" ${!p || p.active ? 'checked' : ''}> Sotuvda (mijozlarga ko'rinadi)</label>
     <div class="m-actions">
       ${p ? `<button type="button" class="btn danger" data-a="delProduct" data-id="${p.id}" style="margin-right:auto">O'chirish</button>` : ''}
@@ -827,6 +868,8 @@ const A = {
   print: () => window.print(),
   newProduct: () => productForm(null),
   editProduct: id => productForm(prod(id)),
+  stockIn: id => { const p = prod(id); if (p) stockForm(p, 'in'); },
+  stockSet: id => { const p = prod(id); if (p) stockForm(p, 'set'); },
   toggleProduct: async id => {
     const p = prod(id); if (!p) return;
     await api(`/products/${p.id}`, { method: 'PUT', body: { name: p.name, category: p.category, unit: p.unit, price: p.price, active: !p.active } });
@@ -905,8 +948,15 @@ const F = {
     const id = f.dataset.id;
     const body = { name: val(f, 'name'), category: val(f, 'category'), unit: val(f, 'unit'), price: Math.round(Number(val(f, 'price'))), active: f.elements.active.checked };
     if (ui.formPhoto !== ui.formPhotoOrig) body.photo = ui.formPhoto;   // yangi rasm yoki '' (o'chirish)
+    if (f.elements.stock) body.stock = val(f, 'stock');
     await api(id ? `/products/${id}` : '/products', { method: id ? 'PUT' : 'POST', body });
     closeModal(); toast(id ? 'Mahsulot yangilandi' : "Mahsulot qo'shildi"); refresh();
+  },
+  saveStock: async f => {
+    const q = val(f, 'qty');
+    const d = await api(`/products/${f.dataset.id}/stock`, { method: 'POST', body: f.dataset.mode === 'in' ? { add: q } : { set: q } });
+    const p = d.product;
+    closeModal(); toast(`${p.name}: omborda ${num(p.stock)} ${p.unit}`); refresh();
   },
   sendMsg: f => sendMessage(Number(f.dataset.id), f.elements.text.value),
   saveProfile: async f => {

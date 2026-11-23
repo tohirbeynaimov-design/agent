@@ -87,11 +87,11 @@ test('faqat admin mahsulot qo\'sha oladi; rasm tekshiriladi', async () => {
   assert.equal(denied.status, 403);
   const badImg = await admin('POST', '/api/products', { name: 'Un', category: 'Un', unit: 'qop', price: 1000, photo: 'data:image/png;base64,' + Buffer.from('salom').toString('base64') });
   assert.equal(badImg.status, 400);
-  const r = await admin('POST', '/api/products', { name: 'Un oliy nav 50 kg', category: 'Un va yorma', unit: 'qop', price: 265000, photo: PNG_1PX });
+  const r = await admin('POST', '/api/products', { name: 'Un oliy nav 50 kg', category: 'Un va yorma', unit: 'qop', price: 265000, stock: 100, photo: PNG_1PX });
   assert.equal(r.status, 201);
   assert.match(r.data.product.photo, /^\/uploads\/p_[0-9a-f]{32}\.png$/);
   productId = r.data.product.id;
-  const r2 = await admin('POST', '/api/products', { name: 'Guruch', category: 'Un va yorma', unit: 'kg', price: 17500 });
+  const r2 = await admin('POST', '/api/products', { name: 'Guruch', category: 'Un va yorma', unit: 'kg', price: 17500, stock: 500 });
   product2Id = r2.data.product.id;
   // rasm faqat tizimga kirganlarga ko'rinadi
   const img = await cust('GET', r.data.product.photo);
@@ -170,6 +170,66 @@ test('hisobot: nima qancha sotildi va ITOGO', async () => {
   assert.equal(csv.status, 200);
   assert.match(csv.headers.get('content-type'), /text\/csv/);
   assert.match(csv.data, /ITOGO/);
+});
+
+test("ombor: buyurtmada ayiriladi, bekor qilinsa qaytadi, yetmasa buyurtma berilmaydi", async () => {
+  const stockOf = async pid => (await admin('GET', '/api/products')).data.products.find(p => p.id === pid).stock;
+  const noStock = await admin('POST', '/api/products', { name: 'Shakar', category: 'Shakar', unit: 'qop', price: 400000 });
+  assert.equal(noStock.status, 400, "qoldig'i kiritilmagan yangi mahsulot qo'shilmaydi");
+  const r = await admin('POST', '/api/products', { name: 'Shakar', category: 'Shakar', unit: 'qop', price: 400000, stock: 10 });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.product.stock, 10);
+  const sid = r.data.product.id;
+  const seen = (await cust('GET', '/api/products')).data.products.find(p => p.id === sid);
+  assert.equal(seen.stock, undefined, "mijoz aniq qoldiqni ko'rmaydi");
+  assert.equal(seen.soldOut, false);
+
+  const o1 = await cust('POST', '/api/orders', { items: [{ productId: sid, qty: 2 }], address: 'Chilonzor 9' });
+  assert.equal(o1.status, 201);
+  assert.equal(await stockOf(sid), 8, '10 qopdan 2 qop olindi — 8 qop qoldi');
+
+  // Yetmasa — butun buyurtma rad etiladi, boshqa mahsulot qoldig'i ham o'zgarmaydi
+  const unBefore = await stockOf(productId);
+  const tooMany = await cust('POST', '/api/orders', { items: [{ productId, qty: 1 }, { productId: sid, qty: 9 }], address: 'Chilonzor 9' });
+  assert.equal(tooMany.status, 409);
+  assert.match(tooMany.data.error, /faqat 8 qop qoldi/);
+  assert.equal(await stockOf(sid), 8);
+  assert.equal(await stockOf(productId), unBefore);
+
+  // Admin bekor qilsa — qaytadi; qayta tiklasa — yana ayiriladi; mijoz bekor qilsa — qaytadi
+  const oid = o1.data.order.id;
+  await admin('POST', `/api/orders/${oid}/status`, { status: 'bekor' });
+  assert.equal(await stockOf(sid), 10);
+  await admin('POST', `/api/orders/${oid}/status`, { status: 'yangi' });
+  assert.equal(await stockOf(sid), 8);
+  await cust('POST', `/api/orders/${oid}/cancel`, {});
+  assert.equal(await stockOf(sid), 10);
+
+  // Kirim va tuzatish
+  let s = await admin('POST', `/api/products/${sid}/stock`, { add: 5 });
+  assert.equal(s.data.product.stock, 15);
+  s = await admin('POST', `/api/products/${sid}/stock`, { add: -20 });
+  assert.equal(s.status, 400, "qoldiq manfiy bo'lmaydi");
+  s = await admin('POST', `/api/products/${sid}/stock`, { set: 0 });
+  assert.equal(s.data.product.stock, 0);
+  assert.equal((await cust('POST', `/api/products/${sid}/stock`, { add: 5 })).status, 403);
+
+  // Tugagan mahsulot
+  assert.equal((await cust('GET', '/api/products')).data.products.find(p => p.id === sid).soldOut, true);
+  const o2 = await cust('POST', '/api/orders', { items: [{ productId: sid, qty: 1 }], address: 'Chilonzor 9' });
+  assert.equal(o2.status, 409);
+  assert.match(o2.data.error, /tugagan/);
+
+  // Tahrirlashda stock berilmasa qoldiq o'zgarmaydi
+  await admin('PUT', `/api/products/${sid}`, { name: 'Shakar', category: 'Shakar', unit: 'qop', price: 410000 });
+  assert.equal(await stockOf(sid), 0);
+
+  // Qoldig'i kiritilmagan eski mahsulot cheklanmaydi, bekor qilinganda ham qoldiq paydo bo'lmaydi
+  db.prepare('UPDATE products SET stock = NULL WHERE id = ?').run(sid);
+  const o3 = await cust('POST', '/api/orders', { items: [{ productId: sid, qty: 3 }], address: 'Chilonzor 9' });
+  assert.equal(o3.status, 201);
+  await cust('POST', `/api/orders/${o3.data.order.id}/cancel`, {});
+  assert.equal(await stockOf(sid), null);
 });
 
 test('chat: mijoz yozadi, admin javob beradi, o\'qildi belgisi', async () => {

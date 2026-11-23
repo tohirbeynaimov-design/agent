@@ -151,6 +151,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px;margin:6px 0}
 .tbl th.r,.tbl td.r{text-align:right}
 .pill{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;background:#f3f4f6;color:#6b7280}
 .pill.ok{background:#dcfce7;color:#15803d}
+.pill.bad{background:#fee2e2;color:#b91c1c}
 
 /* modal */
 .modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:flex-start;justify-content:center;padding:calc(40px + env(safe-area-inset-top,0px)) 16px calc(40px + env(safe-area-inset-bottom,0px));overflow-y:auto;z-index:50}

@@ -4,7 +4,9 @@ const { get, all, run, tx } = require('../db');
 const { HttpError, bad, str, id } = require('../util');
 const { requireMember, requireAdmin, requireCustomer } = require('../auth');
 const { STATUSES } = require('../constants');
+const { takeOrder, returnOrder } = require('../stock');
 const events = require('../events');
+const productsChanged = () => events.emit('products', {}, { all: true });
 
 const r = express.Router();
 
@@ -61,6 +63,7 @@ r.post('/orders', requireCustomer, (req, res) => {
     const p = get('SELECT * FROM products WHERE id = ?', pid);
     if (!p) throw bad("Savatdagi mahsulotlardan biri endi mavjud emas. Savatni yangilang.");
     if (!p.active) throw bad(`"${p.name}" hozir sotuvda yo'q. Uni savatdan olib tashlang.`);
+    // Ombordagi qoldiq yetarliligi pastda, tranzaksiya ichida tekshiriladi (takeOrder)
     lines.push({ p, qty, sum: Math.round(p.price * qty) });
   }
   const total = lines.reduce((s, l) => s + l.sum, 0);
@@ -74,10 +77,12 @@ r.post('/orders', requireCustomer, (req, res) => {
         oid, l.p.id, l.p.name, l.p.unit, l.p.price, l.qty, l.sum);
     }
     run('INSERT INTO order_history (order_id, status, at, by_user) VALUES (?, ?, ?, ?)', oid, 'yangi', now, req.user.id);
+    takeOrder(oid);   // ombordan ayiramiz; yetmasa butun buyurtma bekor bo'ladi
     return oid;
   });
 
   events.emit('order:new', { id: orderId, customerId: req.user.id, total, shop: req.user.shop || req.user.name }, { customerId: req.user.id });
+  productsChanged();
   const [order] = withItems([get(`${ORDER_SELECT} WHERE o.id = ?`, orderId)]);
   res.status(201).json({ order });
 });
@@ -130,8 +135,14 @@ r.post('/orders/:id/status', requireAdmin, (req, res) => {
   const o = get('SELECT * FROM orders WHERE id = ?', oid);
   if (!o) throw new HttpError(404, 'Buyurtma topilmadi');
   if (o.status !== status) {
-    tx(() => setStatus(oid, status, req.user.id));
+    const stockMoved = tx(() => {
+      // Bekor qilinsa — mahsulotlar omborga qaytadi; bekor qilingan buyurtma tiklansa — qayta ayiriladi
+      const moved = status === 'bekor' ? returnOrder(oid) : o.status === 'bekor' ? takeOrder(oid) : false;
+      setStatus(oid, status, req.user.id);
+      return moved;
+    });
     events.emit('order:status', { id: oid, status, customerId: o.customer_id }, { customerId: o.customer_id });
+    if (stockMoved) productsChanged();
   }
   res.json({ ok: true, status });
 });
@@ -145,8 +156,9 @@ r.post('/orders/:id/cancel', requireCustomer, (req, res) => {
   if (o.status !== 'yangi') {
     throw new HttpError(409, "Buyurtma yig'ilishni boshlagan, endi uni bekor qilib bo'lmaydi. Admin bilan chatda bog'laning.");
   }
-  tx(() => setStatus(oid, 'bekor', req.user.id));
+  const stockMoved = tx(() => { const moved = returnOrder(oid); setStatus(oid, 'bekor', req.user.id); return moved; });
   events.emit('order:status', { id: oid, status: 'bekor', customerId: o.customer_id }, { customerId: o.customer_id });
+  if (stockMoved) productsChanged();
   res.json({ ok: true, status: 'bekor' });
 });
 

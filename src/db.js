@@ -123,6 +123,12 @@ const MIGRATIONS = [
     ALTER TABLE users_new RENAME TO users;
     `,
   },
+  // v3: ombor. products.stock — ombordagi qoldiq (NULL: hali kiritilmagan, hisoblanmaydi).
+  // order_items.stock_taken — shu qator ombordan ayirilganmi (bekor qilinganda qaytarish uchun).
+  `
+  ALTER TABLE products ADD COLUMN stock REAL CHECK (stock IS NULL OR stock >= 0);
+  ALTER TABLE order_items ADD COLUMN stock_taken INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 function migrate() {
