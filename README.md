@@ -184,3 +184,4 @@ test/           API testlari (npm test)
 deploy/         Docker'siz o'rnatish uchun nginx va systemd namunalari
 Dockerfile, docker-compose.yml, Caddyfile   Docker bilan joylash
 ```
+# agent
