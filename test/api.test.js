@@ -94,6 +94,14 @@ test("mijozni admin qo'shadi, mijoz o'sha telefon va parol bilan kiradi; o'zi ro
   const ed = await admin('PUT', `/api/admin/customers/${custId}`, { name: 'Azizbek Karimov', shop: 'Baraka', phone: '998901112233', address: 'Chilonzor 10' });
   assert.equal(ed.status, 200);
   assert.equal((await admin('PUT', `/api/admin/customers/${custId}`, { name: 'Azizbek', phone: '998931234567', address: 'Chilonzor 9' })).status, 409);
+
+  // O'chirish: buyurtmasi yo'q mijoz butunlay o'chadi, raqami bo'shaydi
+  const tmp = await admin('POST', '/api/admin/customers', { name: 'Vaqtincha', phone: '998977777777', address: 'Manzil 1', password: '123456' });
+  assert.equal((await cust('DELETE', `/api/admin/customers/${tmp.data.customer.id}`, {})).status, 403);
+  assert.equal((await admin('DELETE', `/api/admin/customers/${tmp.data.customer.id}`, {})).status, 200);
+  assert.equal((await client()('POST', '/api/auth/login', { phone: '998977777777', password: '123456' })).status, 401);
+  assert.equal((await admin('GET', '/api/admin/customers')).data.limit.used, 2);
+  assert.equal((await admin('POST', '/api/admin/customers', { name: 'Yana', phone: '998977777777', address: 'Manzil 1', password: '123456' })).status, 201);
 });
 
 test('parol bazada ochiq holda saqlanmaydi', () => {
@@ -351,4 +359,18 @@ test("parolni almashtirish va admin tomonidan tiklash", async () => {
   assert.equal((await cust('GET', '/api/orders')).status, 401, 'eski sessiya bekor bo\'ldi');
   const login = await cust('POST', '/api/auth/login', { phone: '998901112233', password: 'admin-qoydi' });
   assert.equal(login.status, 200);
+});
+
+test("buyurtmasi bor mijoz o'chirilsa: kira olmaydi, ro'yxatdan yo'qoladi, buyurtmalari saqlanadi", async () => {
+  const ordersBefore = (await admin('GET', '/api/orders?status=hammasi&limit=100')).data.total;
+  assert.equal((await admin('DELETE', `/api/admin/customers/${custId}`, {})).status, 200);
+  assert.equal((await cust('GET', '/api/orders')).status, 401, 'ochiq sessiya ham yopiladi');
+  assert.equal((await cust('POST', '/api/auth/login', { phone: '998901112233', password: '123456' })).status, 401);
+  const list = (await admin('GET', '/api/admin/customers')).data.customers;
+  assert.ok(!list.some(c => c.id === custId));
+  assert.ok(!(await admin('GET', '/api/chat/conversations')).data.conversations.some(c => c.customer.id === custId));
+  assert.equal((await admin('GET', '/api/orders?status=hammasi&limit=100')).data.total, ordersBefore);
+  assert.equal((await admin('DELETE', `/api/admin/customers/${custId}`, {})).status, 404);
+  // Raqam bo'shadi — yangi mijoz qo'shish mumkin
+  assert.equal((await admin('POST', '/api/admin/customers', { name: 'Yangi Azizbek', phone: '998901112233', address: 'Chilonzor 9', password: '123456' })).status, 201);
 });

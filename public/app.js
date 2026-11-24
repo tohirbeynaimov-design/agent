@@ -676,7 +676,7 @@ function viewAdminCustomers() {
         <td class="nowrap hide-m"><a href="tel:+${esc(c.phone)}">${fmtPhone(c.phone)}</a></td><td class="hide-m">${esc(c.address)}</td>
         <td class="r hide-m">${c.orders}</td><td class="r nowrap">${money(c.sum)}</td><td class="nowrap hide-m">${c.lastOrderAt ? fmtDate(c.lastOrderAt) : '—'}</td>
         <td class="nowrap hide-m">${fmtDate(c.createdAt)}<div class="muted small">${c.mine ? 'siz' : c.addedBy ? esc(c.addedBy) : "o'zi ro'yxatdan o'tgan"}</div></td>
-        <td class="r"><div class="acts"><button class="btn sm" data-a="chatWith" data-id="${c.id}">Yozish</button><button class="btn sm" data-a="editCustomer" data-id="${c.id}">Tahrirlash</button><button class="btn sm" data-a="resetPw" data-id="${c.id}">Parol</button></div></td></tr>`).join('')}</tbody>
+        <td class="r"><div class="acts"><button class="btn sm" data-a="chatWith" data-id="${c.id}">Yozish</button><button class="btn sm" data-a="editCustomer" data-id="${c.id}">Tahrirlash</button><button class="btn sm" data-a="resetPw" data-id="${c.id}">Parol</button><button class="btn sm danger" data-a="delCustomer" data-id="${c.id}">O'chirish</button></div></td></tr>`).join('')}</tbody>
     </table></div>`;
 }
 function customerForm(c) {
@@ -953,6 +953,16 @@ const A = {
   },
   chatWith: id => { ui.chatWith = Number(id); go('adminTab', 'chat'); },
   newCustomer: () => customerForm(null),
+  delCustomer: async id => {
+    const c = S.customers.find(x => x.id === Number(id)); if (!c) return;
+    const msg = c.orders
+      ? `"${c.shop || c.name}" o'chirilsinmi? U endi kira olmaydi va ro'yxatdan yo'qoladi. Uning ${c.orders} ta buyurtmasi hisobotlarda saqlanib qoladi.`
+      : `"${c.shop || c.name}" o'chirilsinmi? U endi kira olmaydi va ro'yxatdan yo'qoladi.`;
+    if (!await ask(msg, "O'chirish", true)) return;
+    await api(`/admin/customers/${c.id}`, { method: 'DELETE' });
+    if (ui.chatWith === c.id) ui.chatWith = null;
+    toast("Mijoz o'chirildi"); refresh();
+  },
   editCustomer: id => { const c = S.customers.find(x => x.id === Number(id)); if (c) customerForm(c); },
   chatBack: () => { ui.chatWith = null; render(); },
   goChat: id => {

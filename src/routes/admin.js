@@ -17,7 +17,7 @@ r.get('/admin/customers', requireAdmin, (req, res) => {
     FROM users u
     LEFT JOIN users a ON a.id = u.created_by
     LEFT JOIN orders o ON o.customer_id = u.id AND o.status != 'bekor'
-    WHERE u.role = 'customer'
+    WHERE u.role = 'customer' AND u.deleted_at IS NULL
     GROUP BY u.id
     ORDER BY sum DESC, u.id DESC`);
   res.json({
@@ -30,7 +30,7 @@ r.get('/admin/customers', requireAdmin, (req, res) => {
 });
 
 // Shu admin qo'shgan mijozlar soni (limit shu bo'yicha hisoblanadi)
-const addedBy = adminId => get("SELECT COUNT(*) n FROM users WHERE role = 'customer' AND created_by = ?", adminId).n;
+const addedBy = adminId => get("SELECT COUNT(*) n FROM users WHERE role = 'customer' AND created_by = ? AND deleted_at IS NULL", adminId).n;
 function readCustomer(b = {}) {
   return {
     name: str(b.name, { min: 2, max: 80, field: 'Ism familiya' }),
@@ -65,10 +65,28 @@ r.post('/admin/customers', requireAdmin, async (req, res) => {
   res.status(201).json({ customer: { id: newId, ...c } });
 });
 
+// Mijozni o'chirish. Buyurtmasi yo'q bo'lsa — butunlay; bor bo'lsa — buyurtmalar va hisobotlar saqlanadi,
+// mijoz esa ro'yxatdan yo'qoladi, kira olmaydi va telefon raqami boshqa mijoz uchun bo'shaydi.
+r.delete('/admin/customers/:id', requireAdmin, (req, res) => {
+  const cid = id(req.params.id);
+  if (!get("SELECT 1 FROM users WHERE id = ? AND role = 'customer' AND deleted_at IS NULL", cid)) throw new HttpError(404, 'Mijoz topilmadi');
+  tx(() => {
+    if (get('SELECT 1 FROM orders WHERE customer_id = ? LIMIT 1', cid)) {
+      run("UPDATE users SET deleted_at = ?, active = 0, phone = 'o:' || id || ':' || phone WHERE id = ?", Date.now(), cid);
+      run('DELETE FROM sessions WHERE user_id = ?', cid);
+      run('UPDATE messages SET read_at = ? WHERE customer_id = ? AND read_at IS NULL', Date.now(), cid);   // menyudagi belgi qolib ketmasin
+    } else {
+      run('DELETE FROM users WHERE id = ?', cid);   // sessiyalar va xabarlar ham o'chadi
+    }
+  });
+  events.dropUser(cid);
+  res.json({ ok: true });
+});
+
 // Mijoz ma'lumotlarini tuzatish (masalan, telefon raqam xato yozilgan bo'lsa)
 r.put('/admin/customers/:id', requireAdmin, (req, res) => {
   const cid = id(req.params.id);
-  if (!get("SELECT 1 FROM users WHERE id = ? AND role = 'customer'", cid)) throw new HttpError(404, 'Mijoz topilmadi');
+  if (!get("SELECT 1 FROM users WHERE id = ? AND role = 'customer' AND deleted_at IS NULL", cid)) throw new HttpError(404, 'Mijoz topilmadi');
   const c = readCustomer(req.body);
   ensurePhoneFree(c.phone, cid);
   run('UPDATE users SET name = ?, shop = ?, phone = ?, address = ? WHERE id = ?', c.name, c.shop, c.phone, c.address, cid);

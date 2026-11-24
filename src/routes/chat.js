@@ -58,7 +58,7 @@ r.get('/chat/conversations', requireAdmin, (req, res) => {
            (SELECT COUNT(*) FROM messages x WHERE x.customer_id = u.id AND x.sender = 'customer' AND x.read_at IS NULL) unread
     FROM users u
     JOIN messages m ON m.id = (SELECT MAX(id) FROM messages WHERE customer_id = u.id)
-    WHERE u.role = 'customer'
+    WHERE u.role = 'customer' AND u.deleted_at IS NULL
     ORDER BY m.id DESC`);
   res.json({
     conversations: rows.map(c => ({

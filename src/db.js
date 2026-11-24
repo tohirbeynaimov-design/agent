@@ -170,6 +170,11 @@ const MIGRATIONS = [
   ALTER TABLE users ADD COLUMN customer_limit INTEGER CHECK (customer_limit IS NULL OR customer_limit >= 0);
   CREATE INDEX users_created_by ON users(created_by);
   `,
+  // v6: o'chirilgan mijoz. Buyurtmasi bo'lgan mijoz butunlay o'chirilmaydi (hisobotlar buzilmasligi uchun):
+  // deleted_at belgilanadi, ro'yxatlardan yo'qoladi, kira olmaydi, telefon raqami bo'shaydi.
+  `
+  ALTER TABLE users ADD COLUMN deleted_at INTEGER;
+  `,
 ];
 
 function migrate() {
