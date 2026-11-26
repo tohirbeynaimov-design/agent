@@ -241,10 +241,10 @@ r.get('/admin/stock-report.csv', requireAdmin, (req, res) => {
     [label],
     [],
     ['Mahsulot', 'Birlik', 'Davr boshida', 'Kirdi', 'Chiqdi', 'Davr oxirida'],
-    ...rep.products.map(p => [p.name + (p.deleted ? " (o'chirilgan)" : ''), p.unit, num(p.start), num(p.in), num(p.out), num(p.end)]),
+    ...rep.products.map(p => [p.name + (p.deleted ? " (o'chirilgan)" : ''), 'dona', num(p.start), num(p.in), num(p.out), num(p.end)]),
     [],
     ['Sana', 'Mahsulot', 'Harakat', 'Miqdor', 'Birlik', 'Qoldiq', 'Buyurtma', 'Kim'],
-    ...rep.moves.slice().reverse().map(m => [fmtDT(m.at), m.name, MOVE_LABEL[m.kind], sign(m.qty), m.unit, num(m.after), m.orderId ? `#${m.orderId}` : '', m.by]),
+    ...rep.moves.slice().reverse().map(m => [fmtDT(m.at), m.name, MOVE_LABEL[m.kind], sign(m.qty), 'dona', num(m.after), m.orderId ? `#${m.orderId}` : '', m.by]),
   ];
   sendCsv(res, rows, 'ombor', rep.from);
 });

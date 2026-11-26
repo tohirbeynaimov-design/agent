@@ -1,4 +1,5 @@
 'use strict';
+const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const config = require('./config');
@@ -66,16 +67,28 @@ function createApp() {
   app.use('/uploads', (req, res, next) => (req.user ? next() : next(new HttpError(401, 'Tizimga kiring'))),
     express.static(config.uploadsDir, { maxAge: '30d', immutable: true, index: false, fallthrough: false }));
 
+  // Qidiruv tizimlari (Google) uchun: robots.txt, sitemap.xml va manzili qo'yilgan bosh sahifa
+  const origin = req => { const h = req.get('host') || ''; return /^[a-z0-9.:[\]-]+$/i.test(h) ? `${req.protocol}://${h}` : ''; };
+  app.get('/robots.txt', (req, res) => res.type('text/plain').send(
+    `User-agent: *\nDisallow: /super\nDisallow: /api/\nDisallow: /uploads/\n\nSitemap: ${origin(req)}/sitemap.xml\n`));
+  app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${origin(req)}/</loc></url>\n</urlset>\n`));
+  const indexFile = path.join(config.publicDir, 'index.html');
+  const sendIndex = (req, res) => {
+    const html = fs.readFileSync(indexFile, 'utf8').replaceAll('{{ORIGIN}}', origin(req))
+      .replace('{{ROBOTS}}', /^\/super/.test(req.path) ? 'noindex, nofollow' : 'index, follow');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.type('html').send(html);
+  };
+  app.get(['/', '/index.html'], sendIndex);
+
   app.use(express.static(config.publicDir, {
-    index: 'index.html',
+    index: false,
     setHeaders(res, file) { if (/\.(html|js|css|webmanifest|svg)$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); },
   }));
   // Boshqa barcha sahifa manzillari — ilovaning o'zi
   app.use((req, res, next) => {
-    if (req.method === 'GET' && req.accepts('html')) {
-      res.setHeader('Cache-Control', 'no-cache');
-      return res.sendFile(path.join(config.publicDir, 'index.html'));
-    }
+    if (req.method === 'GET' && req.accepts('html')) return sendIndex(req, res);
     next(new HttpError(404, 'Topilmadi'));
   });
   app.use(errorHandler);

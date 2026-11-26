@@ -220,7 +220,7 @@ test("ombor: buyurtmada ayiriladi, bekor qilinsa qaytadi, yetmasa buyurtma beril
   const unBefore = await stockOf(productId);
   const tooMany = await cust('POST', '/api/orders', { items: [{ productId, qty: 1 }, { productId: sid, qty: 9 }], address: 'Chilonzor 9' });
   assert.equal(tooMany.status, 409);
-  assert.match(tooMany.data.error, /faqat 8 qop qoldi/);
+  assert.match(tooMany.data.error, /faqat 8 dona qoldi/);
   assert.equal(await stockOf(sid), 8);
   assert.equal(await stockOf(productId), unBefore);
 
@@ -238,6 +238,8 @@ test("ombor: buyurtmada ayiriladi, bekor qilinsa qaytadi, yetmasa buyurtma beril
   assert.equal(s.data.product.stock, 15);
   s = await admin('POST', `/api/products/${sid}/stock`, { add: -20 });
   assert.equal(s.status, 400, "qoldiq manfiy bo'lmaydi");
+  assert.equal((await admin('POST', `/api/products/${sid}/stock`, { add: 1.5 })).status, 400, 'ombor donada: kasr son qabul qilinmaydi');
+  assert.equal((await admin('POST', `/api/products/${sid}/stock`, { set: 2.5 })).status, 400);
   s = await admin('POST', `/api/products/${sid}/stock`, { set: 0 });
   assert.equal(s.data.product.stock, 0);
   assert.equal((await cust('POST', `/api/products/${sid}/stock`, { add: 5 })).status, 403);

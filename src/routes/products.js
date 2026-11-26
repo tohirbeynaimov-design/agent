@@ -4,7 +4,7 @@ const { get, all, run, tx } = require('../db');
 const { HttpError, bad, str, int, id, saveImage, removeImage } = require('../util');
 const { requireMember, requireAdmin } = require('../auth');
 const { UNITS } = require('../constants');
-const { MAX_STOCK, r2, fmt, readStock, logMove } = require('../stock');
+const { SU, MAX_STOCK, r2, fmt, readStock, logMove } = require('../stock');
 const events = require('../events');
 
 const r = express.Router();
@@ -89,8 +89,9 @@ r.post('/products/:id/stock', requireAdmin, (req, res) => {
   else {
     const add = r2(Number(String(b.add ?? '').replace(',', '.')));
     if (!Number.isFinite(add) || add === 0) throw bad('Miqdorni kiriting');
+    if (!Number.isInteger(add)) throw bad("Miqdor butun son bo'lishi kerak (necha dona)");
     next = r2((p.stock ?? 0) + add);
-    if (next < 0) throw bad(`Omborda faqat ${fmt(p.stock ?? 0)} ${p.unit} bor`);
+    if (next < 0) throw bad(`Omborda faqat ${fmt(p.stock ?? 0)} ${SU} bor`);
     if (next > MAX_STOCK) throw bad('Miqdor juda katta');
     kind = p.stock === null ? 'boshlangich' : add > 0 ? 'kirim' : 'chiqim';
   }

@@ -5,13 +5,15 @@ const { get, all, run } = require('./db');
 const { HttpError, bad } = require('./util');
 
 const MAX_STOCK = 10_000_000;
+const SU = 'dona';   // ombor qoldig'i har doim donada sanaladi
 const r2 = n => Math.round(n * 100) / 100;
 const fmt = n => String(r2(n)).replace('.', ',');
 
-// Kiritilgan qoldiqni tekshiradi: 0 yoki undan katta son, ko'pi bilan 2 xona kasr
+// Kiritilgan qoldiqni tekshiradi: 0 yoki undan katta butun son (dona)
 function readStock(v, field = 'Ombordagi miqdor') {
-  const n = typeof v === 'number' || (typeof v === 'string' && v.trim() !== '') ? r2(Number(String(v).replace(',', '.'))) : NaN;
+  const n = typeof v === 'number' || (typeof v === 'string' && v.trim() !== '') ? Number(String(v).replace(',', '.')) : NaN;
   if (!Number.isFinite(n) || n < 0) throw bad(`${field}ni kiriting: 0 yoki undan katta son`);
+  if (!Number.isInteger(n)) throw bad(`${field} butun son bo'lishi kerak (necha dona)`);
   if (n > MAX_STOCK) throw bad(`${field} juda katta`);
   return n;
 }
@@ -34,7 +36,7 @@ function takeOrder(orderId, by = null) {
     if (left < 0) {
       throw new HttpError(409, p.stock <= 0
         ? `"${p.name}" omborda tugagan. Uni savatdan olib tashlang.`
-        : `"${p.name}" omborda faqat ${fmt(p.stock)} ${p.unit} qoldi. Miqdorni kamaytiring.`);
+        : `"${p.name}" omborda faqat ${fmt(p.stock)} ${SU} qoldi. Miqdorni kamaytiring.`);
     }
     run('UPDATE products SET stock = ?, updated_at = ? WHERE id = ?', left, Date.now(), p.id);
     run('UPDATE order_items SET stock_taken = 1 WHERE id = ?', it.id);
@@ -58,4 +60,4 @@ function returnOrder(orderId, by = null) {
   return items.length > 0;
 }
 
-module.exports = { MAX_STOCK, r2, fmt, readStock, logMove, takeOrder, returnOrder };
+module.exports = { SU, MAX_STOCK, r2, fmt, readStock, logMove, takeOrder, returnOrder };

@@ -81,6 +81,7 @@ const isAdmin = () => S.me?.role === 'admin';
 const isSuper = () => S.me?.role === 'superadmin';
 const tabKey = () => (isSuper() ? 's:admins' : isAdmin() ? 'a:' + ui.adminTab : 'c:' + ui.custTab);
 // Asosiy sahifa (/) — mijozlar va adminlar telefon bilan kiradi; /super — super admin login bilan kiradi
+const HOME_TITLE = document.title;   // Google uchun to'liq sarlavha (index.html dan)
 const SUPER_PAGE = location.pathname.replace(/\/+$/, '') === '/super';
 
 /* ---------- Savat (shu qurilmada saqlanadi) ---------- */
@@ -221,7 +222,7 @@ function render() {
   if (keep) { const el = document.getElementById(keep.id); if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(keep.s, keep.e); } catch { /* */ } } }
   fitChat(chatState); autoGrow();
   const n = S.summary.newOrders + S.summary.unread;
-  document.title = `${S.me && n ? `(${n}) ` : ''}${S.cfg.appName}${isSuper() || (!S.me && SUPER_PAGE) ? ' — Super admin' : isAdmin() ? ' — Admin' : ''}`;
+  document.title = !S.me && !SUPER_PAGE ? HOME_TITLE : `${S.me && n ? `(${n}) ` : ''}${S.cfg.appName}${isSuper() || (!S.me && SUPER_PAGE) ? ' — Super admin' : isAdmin() ? ' — Admin' : ''}`;
 }
 
 const ICONS = {
@@ -253,6 +254,7 @@ function brandHtml() {
 const header = (u, kind) => `
   <div class="wrap bar"><div class="brand">${brandHtml()}${kind === 'admin' ? ' <small>Admin panel</small>' : kind === 'super' ? ' <small>Super admin</small>' : ''}</div>
     <button class="who" data-a="profile" title="Profil va parol"><b>${esc(kind === 'customer' ? (u.shop || u.name) : u.name)}</b><span>${kind === 'super' ? esc(u.login) : fmtPhone(u.phone)}</span></button>
+    ${kind === 'super' ? '<button class="btn sm dark" data-a="password" title="Parolni almashtirish">🔑 Parol</button>' : ''}
     <button class="btn sm ${kind === 'customer' ? '' : 'dark'}" data-a="logout">Chiqish</button></div>`;
 
 /* ---------- Kirish / ro'yxatdan o'tish ---------- */
@@ -276,6 +278,7 @@ function viewAuth() {
   return `<div class="auth-wrap">
     <div class="card auth">
       <img class="auth-logo" src="/logo.png" alt="${esc(S.cfg.appName)}" width="469" height="206">
+      <h1 class="sub muted auth-h1">Jizzax do'konlariga oziq-ovqat buyurtma tizimi</h1>
       <p class="sub muted">Mijozlar va adminlar uchun kirish</p>
       <form data-form="login">
         ${phoneField()}
@@ -287,6 +290,7 @@ function viewAuth() {
     <p class="muted small center">Hisobingiz yo'qmi? Ta'minotchingiz sizni ro'yxatga qo'shib, telefon raqam va parol beradi.<br>Parolni unutsangiz ham ta'minotchiga qo'ng'iroq qiling — yangi parol qo'yib beradi.</p>
     <div class="or-sep"><span>yoki</span></div>
     <a class="btn block alt-login" href="/super">🛡️ Super admin sifatida kirish</a>
+    <p class="muted small center about">${esc(S.cfg.appName)} — Jizzax viloyati bo'yicha do'konlarga oziq-ovqat yetkazib beruvchi ortakashlar (ta'minotchilar) uchun buyurtma tizimi. Do'konlar katalogdan mahsulot tanlab, telefondan buyurtma beradi va uning holatini kuzatadi. Ortakash esa buyurtmalar, ombor qoldig'i, kunlik va oylik hisobotlarni bir joyda boshqaradi.</p>
   </div>`;
 }
 const authErr = msg => { const e = $('#authErr'); if (e) e.textContent = msg; };
@@ -451,10 +455,11 @@ function viewAdminProducts() {
       </tbody></table></div>` : `<div class="card">${empty('📦', "Hali mahsulot yo'q. \"+ Mahsulot qo'shish\" tugmasini bosing.")}</div>`}`;
 }
 
-/* Ombor */
+/* Ombor — qoldiq har doim donada sanaladi (mahsulot kg yoki litrda sotilsa ham) */
+const SU = 'dona';
 const stockHtml = p => p.stock == null ? '<span class="pill">Kiritilmagan</span>'
-  : p.stock <= 0 ? `<span class="pill bad">Tugagan · 0 ${esc(p.unit)}</span>`
-  : `<b>${num(p.stock)}</b> ${esc(p.unit)}`;
+  : p.stock <= 0 ? `<span class="pill bad">Tugagan · 0 ${SU}</span>`
+  : `<b>${num(p.stock)}</b> ${SU}`;
 function viewStock() {
   const list = [...S.products].sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   const out = list.filter(p => p.stock != null && p.stock <= 0).length;
@@ -475,12 +480,12 @@ function viewStock() {
 // mode: 'in' — kirim (nechta keldi), 'set' — aniq qoldiqni yozish (sanoqdan keyin)
 function stockForm(p, mode) {
   ui.openOrderId = null;
-  const now = p.stock == null ? 'kiritilmagan' : `${num(p.stock)} ${esc(p.unit)}`;
+  const now = p.stock == null ? 'kiritilmagan' : `${num(p.stock)} ${SU}`;
   openModal(`<form data-form="saveStock" data-id="${p.id}" data-mode="${mode}">
     <div class="m-head"><h3>${mode === 'in' ? 'Omborga kirim' : 'Qoldiqni tuzatish'}</h3><button type="button" class="x" data-a="closeModal" aria-label="Yopish">✕</button></div>
     <p style="margin:0 0 12px"><b>${esc(p.name)}</b><br><span class="muted">Hozir omborda: ${now}</span></p>
-    <label>${mode === 'in' ? `Nechta keldi? (${esc(p.unit)}) *` : `Omborda aniq nechta bor? (${esc(p.unit)}) *`}
-      <input name="qty" type="number" min="${mode === 'in' ? '0.01' : '0'}" step="0.01" required inputmode="decimal" value="${mode === 'set' && p.stock != null ? p.stock : ''}" placeholder="0"></label>
+    <label>${mode === 'in' ? `Nechta keldi? (${SU}) *` : `Omborda aniq nechta bor? (${SU}) *`}
+      <input name="qty" type="number" min="${mode === 'in' ? '1' : '0'}" step="1" required inputmode="numeric" pattern="[0-9]*" value="${mode === 'set' && p.stock != null ? p.stock : ''}" placeholder="0"></label>
     <div class="m-actions"><button type="button" class="btn" data-a="closeModal">Bekor</button><button class="btn primary">Saqlash</button></div></form>`);
   setTimeout(() => { const i = $('#modalBox input[name=qty]'); i?.focus(); i?.select(); }, 30);
 }
@@ -536,9 +541,9 @@ function productForm(p) {
       <label>Narx (so'm) *<input name="price" type="number" min="1" step="1" required value="${p ? p.price : ''}" placeholder="0"></label>
     </div>
     ${!p || p.stock == null
-      ? `<label>Omborda nechta bor? *<input name="stock" type="number" min="0" step="0.01" required inputmode="decimal" placeholder="Masalan: 10">
+      ? `<label>Omborda nechta bor? (${SU}) *<input name="stock" type="number" min="0" step="1" required inputmode="numeric" pattern="[0-9]*" placeholder="Masalan: 10">
           <span class="muted small" style="font-weight:400">O'lchov birligida: 10 qop, 25 kg va hokazo.</span></label>`
-      : `<p class="muted small" style="margin:0 0 12px">Omborda: <b>${num(p.stock)} ${esc(p.unit)}</b>. Qoldiq "Ombor" bo'limida o'zgartiriladi.</p>`}
+      : `<p class="muted small" style="margin:0 0 12px">Omborda: <b>${num(p.stock)} ${SU}</b>. Qoldiq "Ombor" bo'limida o'zgartiriladi.</p>`}
     <label class="check"><input type="checkbox" name="active" ${!p || p.active ? 'checked' : ''}> Sotuvda (mijozlarga ko'rinadi)</label>
     <div class="m-actions">
       ${p ? `<button type="button" class="btn danger" data-a="delProduct" data-id="${p.id}" style="margin-right:auto">O'chirish</button>` : ''}
@@ -564,7 +569,7 @@ function reportHead() {
   const types = [['kunlik', 'Kunlik'], ['haftalik', 'Haftalik'], ['oylik', 'Oylik']];
   const stock = ui.rView === 'ombor';
   return `<div class="sec-head"><h2>${stock ? 'Ombor hisobi' : 'Hisobotlar'}</h2>
-      <div class="row gap no-print">${stock
+      <div class="row gap no-print head-btns">${stock
         ? '<button class="btn" data-a="rView" data-id="savdo">📊 Savdo hisoboti</button>'
         : '<button class="btn" data-a="rView" data-id="ombor">🏬 Ombor hisobi</button>'}
         <button class="btn" data-a="exportCsv">⬇ Excel (CSV)</button><button class="btn" data-a="print">🖨 Chop etish</button></div></div>
@@ -601,11 +606,11 @@ function viewStockReport() {
       <div class="card flush tbl-wrap"><h3>Mahsulotlar bo'yicha</h3><table class="tbl">
         <thead><tr><th>Mahsulot</th><th class="r hide-m">Davr boshida</th><th class="r">Kirdi</th><th class="r">Chiqdi</th><th class="r">Qoldi</th></tr></thead>
         <tbody>${r.products.map(p => `<tr class="${p.deleted ? 'dim' : ''}"><td><b>${esc(p.name)}</b>${p.deleted ? ` <span class="muted small">(o'chirilgan)</span>` : ''}
-            <div class="muted small m-only">Boshida: ${num(p.start)} ${esc(p.unit)}</div></td>
-          <td class="r nowrap hide-m">${num(p.start)} ${esc(p.unit)}</td>
+            <div class="muted small m-only">Boshida: ${num(p.start)} ${SU}</div></td>
+          <td class="r nowrap hide-m">${num(p.start)} ${SU}</td>
           <td class="r nowrap">${p.in ? `<span class="pos">+${num(p.in)}</span>` : '—'}</td>
           <td class="r nowrap">${p.out ? `<span class="neg">−${num(p.out)}</span>` : '—'}</td>
-          <td class="r nowrap"><b>${num(p.end)} ${esc(p.unit)}</b></td></tr>`).join('')}</tbody></table></div>
+          <td class="r nowrap"><b>${num(p.end)} ${SU}</b></td></tr>`).join('')}</tbody></table></div>
       <div class="card flush tbl-wrap"><h3>Harakatlar tarixi <span class="muted" style="font-weight:400">(${r.moves.length})</span></h3>${r.moves.length ? `<table class="tbl">
         <thead><tr><th>${ui.rType === 'kunlik' ? 'Vaqt' : 'Sana'}</th><th>Mahsulot</th><th class="hide-m">Harakat</th><th class="r">Miqdor</th><th class="r hide-m">Qoldi</th><th class="hide-m">Kim</th></tr></thead>
         <tbody>${r.moves.map(m => {
@@ -613,8 +618,8 @@ function viewStockReport() {
           return `<tr><td class="nowrap">${ui.rType === 'kunlik' ? fmtTime(m.at) : fmtDT(m.at)}</td>
             <td>${esc(m.name)}<div class="muted small m-only">${what}${m.by ? ' · ' + esc(m.by) : ''}</div></td>
             <td class="hide-m">${what}</td>
-            <td class="r nowrap"><span class="${sgnCls(m.qty)}">${signed(m.qty)}</span> ${esc(m.unit)}</td>
-            <td class="r nowrap hide-m">${num(m.after)} ${esc(m.unit)}</td><td class="hide-m">${esc(m.by)}</td></tr>`;
+            <td class="r nowrap"><span class="${sgnCls(m.qty)}">${signed(m.qty)}</span> ${SU}</td>
+            <td class="r nowrap hide-m">${num(m.after)} ${SU}</td><td class="hide-m">${esc(m.by)}</td></tr>`;
         }).join('')}</tbody></table>` : `<p class="muted" style="padding:0 16px 16px">Bu davrda omborga hech narsa kirmadi va chiqmadi.</p>`}</div>
     </div>` : `<div class="card">${empty('🏬', "Ombor hisobi uchun mahsulot yo'q. Avval mahsulot qo'shib, ombordagi miqdorini kiriting.")}</div>`}`;
 }
@@ -764,13 +769,21 @@ function profileForm() {
       <p class="muted small" style="margin-top:0">${isSuper() ? `Login: ${esc(u.login)}` : `Telefon: ${fmtPhone(u.phone)}`}</p>
       <div class="m-actions"><button class="btn primary">Saqlash</button></div>
     </form>
+    ${pwChangeForm(cust ? 6 : 8)}`);
+}
+const pwChangeForm = (min, head = '<h3>Parolni almashtirish</h3>') => `
     <form data-form="changePassword" class="pw-form">
-      <h3>Parolni almashtirish</h3>
+      ${head}
       <label>Hozirgi parol<input name="current" type="password" autocomplete="current-password" required></label>
-      <div class="two"><label>Yangi parol<input name="next" type="password" autocomplete="new-password" required minlength="${cust ? 6 : 8}"></label>
+      <div class="two"><label>Yangi parol<input name="next" type="password" autocomplete="new-password" required minlength="${min}"></label>
       <label>Yangi parolni takrorlang<input name="next2" type="password" autocomplete="new-password" required></label></div>
-      <div class="m-actions"><button class="btn">Parolni almashtirish</button></div>
-    </form>`);
+      <p class="muted small" style="margin-top:0">Kamida ${min} belgi. Almashtirilgach boshqa qurilmalardagi kirishlar bekor qilinadi.</p>
+      <div class="m-actions"><button class="btn primary">Parolni almashtirish</button></div>
+    </form>`;
+// Faqat parolni almashtirish oynasi (super admin panelidagi "🔑 Parol" tugmasi)
+function passwordForm() {
+  openModal(pwChangeForm(8, `<div class="m-head"><h3>Parolni almashtirish</h3><button type="button" class="x" data-a="closeModal" aria-label="Yopish">✕</button></div>
+      <p class="muted small" style="margin-top:0">Login: ${esc(S.me.login || '')}</p>`));
 }
 
 /* ---------- Chat ---------- */
@@ -886,6 +899,7 @@ const A = {
   reload: () => location.reload(),
   logout: async () => { try { await api('/auth/logout', { method: 'POST' }); } catch { /* */ } onLoggedOut(); },
   profile: () => profileForm(),
+  password: () => passwordForm(),
   custTab: id => go('custTab', id),
   adminTab: id => go('adminTab', id),
   cat: id => { ui.cat = id; render(); },
@@ -1017,7 +1031,7 @@ const F = {
     const q = val(f, 'qty');
     const d = await api(`/products/${f.dataset.id}/stock`, { method: 'POST', body: f.dataset.mode === 'in' ? { add: q } : { set: q } });
     const p = d.product;
-    closeModal(); toast(`${p.name}: omborda ${num(p.stock)} ${p.unit}`); refresh();
+    closeModal(); toast(`${p.name}: omborda ${num(p.stock)} ${SU}`); refresh();
   },
   sendMsg: f => sendMessage(Number(f.dataset.id), f.elements.text.value),
   saveProfile: async f => {
