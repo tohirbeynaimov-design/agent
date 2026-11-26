@@ -43,7 +43,7 @@ const localDigits = v => { let d = digits(v); if (d.length > 9 && d.startsWith('
 const fmtLocal = d => [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(' ');
 const val = (f, n) => (f.elements[n]?.value ?? '').trim();
 const badge = s => `<span class="badge-st ${STATUS[s].cls}">${STATUS[s].label}</span>`;
-const empty = (icon, text, extra = '') => `<div class="empty"><div class="big">${icon}</div><p>${text}</p>${extra}</div>`;
+const empty = (ic, text, extra = '') => `<div class="empty"><div class="big">${icon(ic)}</div><p>${text}</p>${extra}</div>`;
 const loadingHtml = () => `<div class="empty"><div class="spinner" aria-hidden="true"></div><p>Yuklanmoqda...</p></div>`;
 const custLabel = s => (s === 'yangi' ? 'Qabul qilindi' : STATUS[s].label);
 
@@ -169,7 +169,7 @@ function startEvents() {
   es = new EventSource('/api/events');
   es.addEventListener('order:new', e => {
     const d = JSON.parse(e.data);
-    if (isAdmin()) { toast(`🔔 Yangi buyurtma #${d.id} — ${d.shop} · ${money(d.total)}`, 'openOrder', d.id); beep(); }
+    if (isAdmin()) { toast(`Yangi buyurtma #${d.id} — ${d.shop} · ${money(d.total)}`, 'openOrder', d.id, 'bell'); beep(); }
     soon();
   });
   es.addEventListener('order:status', e => {
@@ -182,7 +182,7 @@ function startEvents() {
     const mine = isAdmin() ? d.sender === 'admin' : d.sender === 'customer';
     if (!mine) {
       const viewing = !document.hidden && (isAdmin() ? ui.adminTab === 'chat' && ui.chatWith === d.customerId : ui.custTab === 'chat');
-      if (!viewing) toast(`💬 ${d.from}: ${d.text || 'Rasm'}`, 'goChat', d.customerId);
+      if (!viewing) toast(`${d.from}: ${d.text || 'Rasm'}`, 'goChat', d.customerId, 'chat');
       beep();
     }
     soon();
@@ -237,6 +237,17 @@ const ICONS = {
   clip: '<path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/>',
   send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M17 6l3 3M14 9l2 2"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
+  printer: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  ok: '<circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/>',
+  alert: '<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
 };
 const icon = k => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k] || ''}</svg>`;
 const IMG_ICON = `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
@@ -254,7 +265,7 @@ function brandHtml() {
 const header = (u, kind) => `
   <div class="wrap bar"><div class="brand">${brandHtml()}${kind === 'admin' ? ' <small>Admin panel</small>' : kind === 'super' ? ' <small>Super admin</small>' : ''}</div>
     <button class="who" data-a="profile" title="Profil va parol"><b>${esc(kind === 'customer' ? (u.shop || u.name) : u.name)}</b><span>${kind === 'super' ? esc(u.login) : fmtPhone(u.phone)}</span></button>
-    ${kind === 'super' ? '<button class="btn sm dark" data-a="password" title="Parolni almashtirish">🔑 Parol</button>' : ''}
+    ${kind === 'super' ? `<button class="btn sm dark" data-a="password" title="Parolni almashtirish">${icon('key')}Parol</button>` : ''}
     <button class="btn sm ${kind === 'customer' ? '' : 'dark'}" data-a="logout">Chiqish</button></div>`;
 
 /* ---------- Kirish / ro'yxatdan o'tish ---------- */
@@ -262,7 +273,7 @@ const phoneField = () => `<label>Telefon raqam<div class="phone"><span>+998</spa
 function viewSuperLogin() {
   return `<div class="auth-wrap"><div class="card auth">
     <img class="auth-logo sm" src="/logo.png" alt="${esc(S.cfg.appName)}" width="469" height="206">
-    <div class="brand big">🛡️ Super admin</div>
+    <div class="brand big">${icon('shield')}Super admin</div>
     <p class="sub muted">${esc(S.cfg.appName)} — admin hisoblarini boshqarish</p>
     <form data-form="superLogin" class="super-form">
       <label>Login<input name="login" id="superLogin" required maxlength="40" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Loginingiz"></label>
@@ -289,7 +300,7 @@ function viewAuth() {
     </div>
     <p class="muted small center">Hisobingiz yo'qmi? Ta'minotchingiz sizni ro'yxatga qo'shib, telefon raqam va parol beradi.<br>Parolni unutsangiz ham ta'minotchiga qo'ng'iroq qiling — yangi parol qo'yib beradi.</p>
     <div class="or-sep"><span>yoki</span></div>
-    <a class="btn block alt-login" href="/super">🛡️ Super admin sifatida kirish</a>
+    <a class="btn block alt-login" href="/super">${icon('shield')}Super admin sifatida kirish</a>
     <p class="muted small center about">${esc(S.cfg.appName)} — Jizzax viloyati bo'yicha do'konlarga oziq-ovqat yetkazib beruvchi ortakashlar (ta'minotchilar) uchun buyurtma tizimi. Do'konlar katalogdan mahsulot tanlab, telefondan buyurtma beradi va uning holatini kuzatadi. Ortakash esa buyurtmalar, ombor qoldig'i, kunlik va oylik hisobotlarni bir joyda boshqaradi.</p>
   </div>`;
 }
@@ -303,21 +314,21 @@ function viewCustomer(u) {
   const body = !ready ? loadingHtml() : { katalog: () => viewCatalog(), savat: () => viewCart(u, items, total), buyurtmalar: () => viewMyOrders(), chat: () => viewCustChat() }[ui.custTab]();
   return `<header class="top">${header(u, 'customer')}${navHtml('custTab', ui.custTab, tabs)}</header>
     <main class="wrap ${ui.custTab === 'chat' ? 'chat-page' : ''}">${body}</main>
-    ${cnt && ui.custTab === 'katalog' ? `<button class="cartbar" data-a="custTab" data-id="savat"><span>🛒 ${cnt} ta · ${money(total)}</span><span>Savatga o'tish →</span></button>` : ''}`;
+    ${cnt && ui.custTab === 'katalog' ? `<button class="cartbar" data-a="custTab" data-id="savat"><span>${icon('savat')}${cnt} ta · ${money(total)}</span><span>Savatga o'tish →</span></button>` : ''}`;
 }
 function viewCatalog() {
   const active = S.products.filter(p => p.active);
-  if (!active.length) return empty('📦', "Hozircha mahsulotlar yo'q. Tez orada qo'shiladi.");
+  if (!active.length) return empty('mahsulotlar', "Hozircha mahsulotlar yo'q. Tez orada qo'shiladi.");
   const cats = ['Hammasi', ...new Set(active.map(p => p.category))];
   if (!cats.includes(ui.cat)) ui.cat = 'Hammasi';
-  return `<input id="search" class="search" type="search" placeholder="🔍 Mahsulot qidirish..." value="${esc(ui.q)}" aria-label="Mahsulot qidirish">
+  return `<input id="search" class="search" type="search" placeholder="Mahsulot qidirish..." value="${esc(ui.q)}" aria-label="Mahsulot qidirish">
     <div class="chips">${cats.map(c => `<button class="chip ${ui.cat === c ? 'on' : ''}" data-a="cat" data-id="${esc(c)}">${esc(c)}</button>`).join('')}</div>
     <div id="grid" class="grid">${gridHtml()}</div>`;
 }
 function gridHtml() {
   const q = ui.q.trim().toLowerCase();
   const list = S.products.filter(p => p.active && (ui.cat === 'Hammasi' || p.category === ui.cat) && (!q || p.name.toLowerCase().includes(q)));
-  if (!list.length) return `<div style="grid-column:1/-1">${empty('🔍', 'Hech narsa topilmadi')}</div>`;
+  if (!list.length) return `<div style="grid-column:1/-1">${empty('search', 'Hech narsa topilmadi')}</div>`;
   return list.map(p => {
     const n = cart[p.id] || 0;
     return `<div class="pcard"><div class="pimg">${photoHtml(p)}</div><div class="pcat">${esc(p.category)}</div>
@@ -334,7 +345,7 @@ function setQty(id, v) {
   saveCart(); render();
 }
 function viewCart(u, items, total) {
-  if (!items.length) return empty('🛒', "Savat bo'sh", `<button class="btn primary" data-a="custTab" data-id="katalog">Katalogga o'tish</button>`);
+  if (!items.length) return empty('savat', "Savat bo'sh", `<button class="btn primary" data-a="custTab" data-id="katalog">Katalogga o'tish</button>`);
   return `<div class="card">
     <h3>Savat</h3>
     ${items.map(({ p, q }) => `<div class="cart-row">
@@ -357,7 +368,7 @@ function steps(o) {
 }
 const itemsHtml = o => `<div class="o-items">${o.items.map(i => `<div><span>${esc(i.name)}</span><span>${num(i.qty)} ${esc(i.unit)} × ${money(i.price)}</span></div>`).join('')}</div>`;
 function viewMyOrders() {
-  if (!S.myOrders.length) return empty('📋', 'Hali buyurtma bermagansiz', `<button class="btn primary" data-a="custTab" data-id="katalog">Katalogga o'tish</button>`);
+  if (!S.myOrders.length) return empty('buyurtmalar', 'Hali buyurtma bermagansiz', `<button class="btn primary" data-a="custTab" data-id="katalog">Katalogga o'tish</button>`);
   return `<div class="stack">${S.myOrders.map(o => `<div class="card">
       <div class="o-head"><b>Buyurtma #${o.id}</b>${badge(o.status)}<span class="muted small right">${fmtDT(o.createdAt)}</span></div>
       ${steps(o)}
@@ -365,7 +376,7 @@ function viewMyOrders() {
       <div class="o-foot"><b>Jami: ${money(o.total)}</b>
         <div class="row gap wrapf">${o.status === 'yangi' ? `<button class="btn sm danger" data-a="custCancel" data-id="${o.id}">Bekor qilish</button>` : ''}
         <button class="btn sm" data-a="askOrder" data-id="${o.id}">Savol berish</button>
-        <button class="btn sm" data-a="reorder" data-id="${o.id}">↻ Takrorlash</button></div></div>
+        <button class="btn sm" data-a="reorder" data-id="${o.id}">${icon('refresh')}Takrorlash</button></div></div>
     </div>`).join('')}
     ${S.myOrdersTotal > S.myOrders.length ? `<div class="center"><button class="btn" data-a="moreMy">Yana ko'rsatish</button></div>` : ''}</div>`;
 }
@@ -384,7 +395,7 @@ function viewAdminOrders() {
   const { orders, counts, total, today } = S.adm;
   return `<div class="sec-head"><h2>Buyurtmalar</h2><span class="muted small">Bugun: ${today.count} ta buyurtma · ${money(today.sum)}</span></div>
     <div class="chips">${ORDER_FILTERS.map(([k, l]) => `<button class="chip ${ui.orderFilter === k ? 'on' : ''}" data-a="of" data-id="${k}">${l}<span class="cnt">${counts[k] ?? 0}</span></button>`).join('')}</div>
-    ${orders.length ? `<div class="ogrid">${orders.map(orderCard).join('')}</div>` : empty('📭', "Bu bo'limda buyurtma yo'q")}
+    ${orders.length ? `<div class="ogrid">${orders.map(orderCard).join('')}</div>` : empty('inbox', "Bu bo'limda buyurtma yo'q")}
     ${total > orders.length ? `<div class="center" style="margin-top:16px"><button class="btn" data-a="more">Yana ko'rsatish (${total - orders.length})</button></div>` : ''}`;
 }
 function orderCard(o) {
@@ -395,7 +406,7 @@ function orderCard(o) {
     <div class="ocust"><b>${esc(c.shop || c.name || '—')}</b>${c.shop ? ` · ${esc(c.name)}` : ''}<br>
       <a href="tel:+${esc(c.phone)}">${fmtPhone(c.phone)}</a> · <span class="muted">${esc(o.address)}</span></div>
     <div class="muted small">${esc(names)}</div>
-    ${o.comment ? `<div class="ocomment">💬 ${esc(o.comment)}</div>` : ''}
+    ${o.comment ? `<div class="ocomment">${icon('chat')}<span>${esc(o.comment)}</span></div>` : ''}
     <div class="o-foot"><b>${money(o.total)}</b>
       <div class="row gap"><button class="btn sm" data-a="openOrder" data-id="${o.id}">Batafsil</button>
       ${NEXT[o.status] ? `<button class="btn sm primary" data-a="advance" data-id="${o.id}" data-st="${o.status}">${NEXT[o.status].label}</button>` : ''}</div></div>
@@ -416,7 +427,7 @@ async function openOrder(id, silent) {
       <div><div class="muted small">Yetkazish manzili</div>${esc(o.address)}
         <div class="muted small" style="margin-top:8px">Buyurtma vaqti</div>${fmtDT(o.createdAt)}</div>
     </div>
-    ${o.comment ? `<div class="ocomment" style="margin-bottom:12px">💬 ${esc(o.comment)}</div>` : ''}
+    ${o.comment ? `<div class="ocomment" style="margin-bottom:12px">${icon('chat')}<span>${esc(o.comment)}</span></div>` : ''}
     <div class="tbl-wrap"><table class="tbl">
       <thead><tr><th class="hide-m">#</th><th>Mahsulot</th><th class="r">Miqdor</th><th class="r hide-m">Narx</th><th class="r">Summa</th><th class="print-only">✓</th></tr></thead>
       <tbody>${o.items.map((i, k) => `<tr><td class="hide-m">${k + 1}</td><td>${esc(i.name)}<div class="muted small m-only">${money(i.price)} / ${esc(i.unit)}</div></td><td class="r nowrap">${num(i.qty)} ${esc(i.unit)}</td><td class="r nowrap hide-m">${money(i.price)}</td><td class="r nowrap">${money(i.sum)}</td><td class="print-only">☐</td></tr>`).join('')}</tbody>
@@ -426,7 +437,7 @@ async function openOrder(id, silent) {
     <div class="m-actions no-print">
       ${ACTIVE.includes(o.status) ? `<button class="btn danger" data-a="cancelOrder" data-id="${o.id}">Bekor qilish</button>` : ''}
       <button class="btn" data-a="askOrder" data-id="${o.id}">Mijozga yozish</button>
-      <button class="btn" data-a="printModal">🖨 Yig'ish varaqasi</button>
+      <button class="btn" data-a="printModal">${icon('printer')}Yig'ish varaqasi</button>
       ${NEXT[o.status] ? `<button class="btn primary" data-a="advance" data-id="${o.id}" data-st="${o.status}">${NEXT[o.status].label}</button>` : ''}
     </div>`);
 }
@@ -452,7 +463,7 @@ function viewAdminProducts() {
         <td class="hide-m">${p.active ? '<span class="pill ok">Sotuvda</span>' : '<span class="pill">Yashirin</span>'}</td>
         <td class="r"><div class="acts"><button class="btn sm" data-a="editProduct" data-id="${p.id}">Tahrirlash</button>
           <button class="btn sm" data-a="toggleProduct" data-id="${p.id}">${p.active ? 'Yashirish' : "Sotuvga qo'yish"}</button></div></td></tr>`).join('')}
-      </tbody></table></div>` : `<div class="card">${empty('📦', "Hali mahsulot yo'q. \"+ Mahsulot qo'shish\" tugmasini bosing.")}</div>`}`;
+      </tbody></table></div>` : `<div class="card">${empty('mahsulotlar', "Hali mahsulot yo'q. \"+ Mahsulot qo'shish\" tugmasini bosing.")}</div>`}`;
 }
 
 /* Ombor — qoldiq har doim donada sanaladi (mahsulot kg yoki litrda sotilsa ham) */
@@ -475,7 +486,7 @@ function viewStock() {
         <td class="r nowrap">${stockHtml(p)}</td>
         <td class="r"><div class="acts"><button class="btn sm primary" data-a="stockIn" data-id="${p.id}">+ Kirim</button>
           <button class="btn sm" data-a="stockSet" data-id="${p.id}">Tuzatish</button></div></td></tr>`).join('')}
-      </tbody></table></div>` : `<div class="card">${empty('🏬', "Omborda hali mahsulot yo'q. Avval \"Mahsulotlar\" bo'limida mahsulot qo'shing.")}</div>`}`;
+      </tbody></table></div>` : `<div class="card">${empty('ombor', "Omborda hali mahsulot yo'q. Avval \"Mahsulotlar\" bo'limida mahsulot qo'shing.")}</div>`}`;
 }
 // mode: 'in' — kirim (nechta keldi), 'set' — aniq qoldiqni yozish (sanoqdan keyin)
 function stockForm(p, mode) {
@@ -570,9 +581,9 @@ function reportHead() {
   const stock = ui.rView === 'ombor';
   return `<div class="sec-head"><h2>${stock ? 'Ombor hisobi' : 'Hisobotlar'}</h2>
       <div class="row gap no-print head-btns">${stock
-        ? '<button class="btn" data-a="rView" data-id="savdo">📊 Savdo hisoboti</button>'
-        : '<button class="btn" data-a="rView" data-id="ombor">🏬 Ombor hisobi</button>'}
-        <button class="btn" data-a="exportCsv">⬇ Excel (CSV)</button><button class="btn" data-a="print">🖨 Chop etish</button></div></div>
+        ? `<button class="btn" data-a="rView" data-id="savdo">${icon('hisobotlar')}Savdo hisoboti</button>`
+        : `<button class="btn" data-a="rView" data-id="ombor">${icon('ombor')}Ombor hisobi</button>`}
+        <button class="btn" data-a="exportCsv">${icon('download')}Excel (CSV)</button><button class="btn" data-a="print">${icon('printer')}Chop etish</button></div></div>
     <div class="card rep-ctl no-print">
       <div class="seg">${types.map(([k, l]) => `<button data-a="rType" data-id="${k}" class="${ui.rType === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="row gap"><button class="btn sm" data-a="rShift" data-id="-1" aria-label="Oldingi">‹</button>
@@ -592,7 +603,7 @@ function viewStockReport() {
   if (!r) return loadingHtml();
   const ins = r.moves.filter(m => m.qty > 0).length, outs = r.moves.filter(m => m.qty < 0).length;
   const ordersOut = new Set(r.moves.filter(m => m.kind === 'buyurtma').map(m => m.orderId)).size;
-  const note = r.untracked ? `<p class="note">ℹ️ ${r.untracked} ta mahsulotning ombordagi miqdori hali kiritilmagan, ular hisobga kirmaydi. "Ombor" bo'limida "Tuzatish" orqali kiriting.</p>` : '';
+  const note = r.untracked ? `<p class="note">${icon('info')}${r.untracked} ta mahsulotning ombordagi miqdori hali kiritilmagan, ular hisobga kirmaydi. "Ombor" bo'limida "Tuzatish" orqali kiriting.</p>` : '';
   return `${reportHead()}
     <h3 class="period">${TYPE_LABEL[ui.rType]} ombor hisobi: ${r.label}</h3>
     <div class="kpis">
@@ -621,7 +632,7 @@ function viewStockReport() {
             <td class="r nowrap"><span class="${sgnCls(m.qty)}">${signed(m.qty)}</span> ${SU}</td>
             <td class="r nowrap hide-m">${num(m.after)} ${SU}</td><td class="hide-m">${esc(m.by)}</td></tr>`;
         }).join('')}</tbody></table>` : `<p class="muted" style="padding:0 16px 16px">Bu davrda omborga hech narsa kirmadi va chiqmadi.</p>`}</div>
-    </div>` : `<div class="card">${empty('🏬', "Ombor hisobi uchun mahsulot yo'q. Avval mahsulot qo'shib, ombordagi miqdorini kiriting.")}</div>`}`;
+    </div>` : `<div class="card">${empty('ombor', "Ombor hisobi uchun mahsulot yo'q. Avval mahsulot qo'shib, ombordagi miqdorini kiriting.")}</div>`}`;
 }
 function viewReports() {
   if (ui.rView === 'ombor') return viewStockReport();
@@ -640,7 +651,7 @@ function viewReports() {
       <thead><tr><th>№</th><th class="hide-m">Vaqt</th><th>Mijoz</th><th class="hide-m">Holat</th><th class="r">Summa</th></tr></thead>
       <tbody>${r.orders.map(o => `<tr><td><a href="#" data-a="openOrder" data-id="${o.id}">#${o.id}</a></td><td class="hide-m">${fmtTime(o.createdAt)}</td><td>${esc(o.customer.shop || o.customer.name)}<div class="muted small m-only">${fmtTime(o.createdAt)}</div></td><td class="hide-m">${badge(o.status)}</td><td class="r nowrap">${money(o.total)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td>ITOGO</td><td class="hide-m"></td><td></td><td class="hide-m"></td><td class="r nowrap">${money(r.total)}</td></tr></tfoot></table></div>` : '';
-  const note = r.notCounted ? `<p class="note">ℹ️ ${ui.rBasis === 'yetkazildi' ? 'Hali yetkazilmagan yoki bekor qilingan' : 'Bekor qilingan'} ${r.notCounted} ta buyurtma hisobotga kirmadi.</p>` : '';
+  const note = r.notCounted ? `<p class="note">${icon('info')}${ui.rBasis === 'yetkazildi' ? 'Hali yetkazilmagan yoki bekor qilingan' : 'Bekor qilingan'} ${r.notCounted} ta buyurtma hisobotga kirmadi.</p>` : '';
   return `${reportHead()}
     <h3 class="period">${TYPE_LABEL[ui.rType]} hisobot: ${r.label}</h3>
     <div class="kpis">
@@ -661,7 +672,7 @@ function viewReports() {
         <tbody>${r.customers.map(x => `<tr><td><b>${esc(x.shop || x.name)}</b><div class="muted small">${esc(x.name)}</div></td><td class="nowrap hide-m">${fmtPhone(x.phone)}</td><td class="r">${x.orders}</td><td class="r nowrap">${money(x.sum)}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td>ITOGO</td><td class="hide-m"></td><td class="r">${r.count}</td><td class="r nowrap">${money(r.total)}</td></tr></tfoot></table></div>
       ${dayList}
-    </div>` : `<div class="card">${empty('📊', "Bu davrda hisobga kiradigan savdo yo'q")}</div>`}`;
+    </div>` : `<div class="card">${empty('hisobotlar', "Bu davrda hisobga kiradigan savdo yo'q")}</div>`}`;
 }
 
 /* Mijozlar */
@@ -672,7 +683,7 @@ function viewAdminCustomers() {
   const head = `<div class="sec-head"><h2>Mijozlar <span class="muted" style="font-weight:400">(${S.customers.length})</span></h2>
       <button class="btn primary" data-a="newCustomer" ${full ? `disabled title="Limit to'ldi. Super admin bilan bog'laning."` : ''}>+ Mijoz qo'shish</button></div>
     <p class="note">${limitTxt}. Mijoz siz kiritgan telefon raqam va parol bilan kirish sahifasidan kiradi.${full ? " Ko'proq mijoz qo'shish uchun super admin bilan bog'laning." : ''}</p>`;
-  if (!S.customers.length) return `${head}<div class="card">${empty('👥', "Hali mijoz yo'q. \"+ Mijoz qo'shish\" tugmasini bosing.")}</div>`;
+  if (!S.customers.length) return `${head}<div class="card">${empty('mijozlar', "Hali mijoz yo'q. \"+ Mijoz qo'shish\" tugmasini bosing.")}</div>`;
   return `${head}
     <div class="card flush tbl-wrap"><table class="tbl">
       <thead><tr><th>Mijoz</th><th class="hide-m">Telefon</th><th class="hide-m">Manzil</th><th class="r hide-m">Buyurtma</th><th class="r">Jami summa</th><th class="hide-m">Oxirgi buyurtma</th><th class="hide-m">Qo'shilgan</th><th></th></tr></thead>
@@ -727,7 +738,7 @@ function viewSuper() {
           <button class="btn sm" data-a="adminPw" data-id="${a.id}">Parol</button>
           <button class="btn sm" data-a="toggleAdmin" data-id="${a.id}">${a.active ? 'Bloklash' : 'Faollashtirish'}</button>
           <button class="btn sm danger" data-a="delAdmin" data-id="${a.id}">O'chirish</button></div></td></tr>`).join('')}</tbody></table></div>`
-    : `<div class="card">${empty('🛡️', "Hali admin yo'q. \"+ Admin qo'shish\" tugmasini bosing.")}</div>`}`;
+    : `<div class="card">${empty('shield', "Hali admin yo'q. \"+ Admin qo'shish\" tugmasini bosing.")}</div>`}`;
   return `<header class="top admin super">${header(S.me, 'super')}</header><main class="wrap">${body}</main>`;
 }
 function genPassword(n = 10) {
@@ -780,7 +791,7 @@ const pwChangeForm = (min, head = '<h3>Parolni almashtirish</h3>') => `
       <p class="muted small" style="margin-top:0">Kamida ${min} belgi. Almashtirilgach boshqa qurilmalardagi kirishlar bekor qilinadi.</p>
       <div class="m-actions"><button class="btn primary">Parolni almashtirish</button></div>
     </form>`;
-// Faqat parolni almashtirish oynasi (super admin panelidagi "🔑 Parol" tugmasi)
+// Faqat parolni almashtirish oynasi (super admin panelidagi "Parol" tugmasi)
 function passwordForm() {
   openModal(pwChangeForm(8, `<div class="m-head"><h3>Parolni almashtirish</h3><button type="button" class="x" data-a="closeModal" aria-label="Yopish">✕</button></div>
       <p class="muted small" style="margin-top:0">Login: ${esc(S.me.login || '')}</p>`));
@@ -876,8 +887,8 @@ function ask(msg, yes = 'Ha', danger = false) {
     d.classList.remove('hidden'); y.focus();
   });
 }
-function toast(msg, act = '', id = '') {
-  const t = $('#toast'); t.textContent = msg; t.dataset.a = act; t.dataset.id = id; t.style.cursor = act ? 'pointer' : '';
+function toast(msg, act = '', id = '', ic = '') {
+  const t = $('#toast'); t.innerHTML = ic ? icon(ic) : ''; const tx = document.createElement('span'); tx.textContent = msg; t.append(tx); t.dataset.a = act; t.dataset.id = id; t.style.cursor = act ? 'pointer' : '';
   t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), act ? 6000 : 3500);
 }
 let audioCtx = null;
@@ -1016,7 +1027,7 @@ const F = {
       items: items.map(({ p, q }) => ({ productId: p.id, qty: q })), address: val(f, 'address'), comment: val(f, 'comment'),
     } });
     cart = {}; saveCart();
-    toast(`✅ Buyurtma #${d.order.id} yuborildi. Tez orada yig'ib yetkazamiz!`);
+    toast(`Buyurtma #${d.order.id} yuborildi. Tez orada yig'ib yetkazamiz!`, '', '', 'ok');
     go('custTab', 'buyurtmalar');
   },
   saveProduct: async f => {
@@ -1143,6 +1154,6 @@ window.addEventListener('afterprint', () => document.body.classList.remove('prin
     const d = await api('/me');
     if (d.user) afterLogin(d.user); else render();
   } catch (e) {
-    $('#app').innerHTML = `<div class="auth-wrap">${empty('⚠️', esc(e.message), '<button class="btn primary" data-a="reload">Qayta urinish</button>')}</div>`;
+    $('#app').innerHTML = `<div class="auth-wrap">${empty('alert', esc(e.message), '<button class="btn primary" data-a="reload">Qayta urinish</button>')}</div>`;
   }
 })();
